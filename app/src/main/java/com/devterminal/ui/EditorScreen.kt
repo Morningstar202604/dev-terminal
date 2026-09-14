@@ -1,0 +1,778 @@
+package com.devterminal.ui
+
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.devterminal.project.Templates
+import java.io.File
+import kotlinx.coroutines.launch
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditorScreen(vm: EditorViewModel) {
+    val ui by vm.ui.collectAsStateWithLifecycle()
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+    var showNewProject by remember { mutableStateOf(false) }
+    var showDiagnostics by remember { mutableStateOf(false) }
+    var showRunConfig by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    var showAbout by remember { mutableStateOf(false) }
+    /** 长按文件树后的操作目标 */
+    var actionTarget by remember { mutableStateOf<File?>(null) }
+
+    // SAF：导入任意文件到项目
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let { vm.importFile(it) } }
+
+    // SAF：把当前文件导出到用户选择的位置
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri -> uri?.let { vm.exportCurrentFile(it) } }
+
+    LaunchedEffect(ui.message) {
+        ui.message?.let {
+            snackbar.showSnackbar(it)
+            vm.consumeMessage()
+        }
+    }
+
+    // 环境准备中：全屏进度
+    if (ui.envState == EnvState.PREPARING) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator()
+                Spacer(Modifier.height(16.dp))
+                Text(ui.envMessage, fontSize = 14.sp)
+                if (ui.installProgress >= 0f) {
+                    Spacer(Modifier.height(16.dp))
+                    LinearProgressIndicator(
+                        progress = { ui.installProgress },
+                        modifier = Modifier.width(220.dp)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "首次启动需解压工具链，请稍候…",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    )
+                }
+            }
+        }
+        return
+    }
+
+    // 工具链缺失：引导页，告诉用户该怎么修
+    if (ui.envState == EnvState.ERROR && ui.diagnostics == null) {
+        MissingToolchainScreen(
+            message = ui.envMessage,
+            detail = ui.message,
+            onRetry = { vm.retryPrepare() }
+        )
+        return
+    }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(Modifier.width(280.dp)) {
+                Column(Modifier.fillMaxHeight()) {
+                    Text(
+                        "DevTerminal",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                    Divider()
+                    FileTree(
+                        root = ui.tree,
+                        selectedPath = ui.currentFile?.absolutePath,
+                        onFileClick = { vm.openFile(File(it.path)) },
+                        onFileLongPress = { node -> actionTarget = File(node.path) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    Divider()
+                    // 底部操作区：分成两行，避免小屏挤压
+                    Column(Modifier.fillMaxWidth().padding(8.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            TextButton(
+                                onClick = { showNewProject = true },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Filled.Add, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(3.dp))
+                                Text("新项目", fontSize = 12.sp)
+                            }
+                            TextButton(
+                                onClick = { importLauncher.launch(arrayOf("*/*")) },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Filled.FileDownload, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(3.dp))
+                                Text("导入", fontSize = 12.sp)
+                            }
+                            TextButton(
+                                onClick = { exportLauncher.launch(vm.suggestedExportName()) },
+                                enabled = ui.currentFile != null,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Filled.FileUpload, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(3.dp))
+                                Text("导出", fontSize = 12.sp)
+                            }
+                        }
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            TextButton(
+                                onClick = { showDiagnostics = true },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Filled.Info, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(3.dp))
+                                Text("自检", fontSize = 12.sp)
+                            }
+                            TextButton(
+                                onClick = { showSettings = true },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Filled.Settings, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(3.dp))
+                                Text("设置", fontSize = 12.sp)
+                            }
+                            TextButton(
+                                onClick = { showAbout = true },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Filled.Info, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(3.dp))
+                                Text("关于", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(
+                                ui.currentFile?.name ?: "未打开文件",
+                                fontSize = 15.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            if (ui.dirty) {
+                                Text("未保存", fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.secondary)
+                            }
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Filled.Menu, "打开文件树")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { showRunConfig = true }) {
+                            Icon(Icons.Filled.Tune, "运行配置",
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                        }
+                        if (ui.dirty) {
+                            IconButton(onClick = { vm.save() }) {
+                                Icon(Icons.Filled.Save, "保存")
+                            }
+                        }
+                        if (ui.running) {
+                            IconButton(onClick = { vm.stopRun() }) {
+                                Icon(Icons.Filled.Stop, "停止",
+                                    tint = MaterialTheme.colorScheme.error)
+                            }
+                        } else {
+                            IconButton(
+                                onClick = { vm.runCurrent() },
+                                enabled = ui.currentFile != null
+                            ) {
+                                Icon(Icons.Filled.PlayArrow, "运行",
+                                    tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
+                )
+            },
+            snackbarHost = { SnackbarHost(snackbar) }
+        ) { padding ->
+            Column(Modifier.padding(padding).fillMaxSize()) {
+                if (ui.envState == EnvState.ERROR) {
+                    Box(
+                        Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.error.copy(alpha = 0.12f))
+                            .padding(12.dp)
+                    ) {
+                        Text(ui.envMessage, fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                CodeEditorView(
+                    file = ui.currentFile,
+                    text = ui.editorText,
+                    onTextChange = vm::onEditorChanged,
+                    fontSize = ui.settings.editorFontSize,
+                    language = if (ui.currentFile?.extension == "java")
+                        com.devterminal.engine.Language.JAVA
+                    else com.devterminal.engine.Language.PYTHON,
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                )
+                Divider()
+                OutputPanel(
+                    output = ui.output,
+                    running = ui.running,
+                    exitCode = ui.exitCode,
+                    inputVisible = ui.inputVisible,
+                    inputDraft = ui.inputDraft,
+                    onInputChange = vm::onInputDraftChanged,
+                    onInputSend = { vm.sendInput(ui.inputDraft) },
+                    onClear = vm::clearOutput,
+                    onRerun = vm::runCurrent,
+                    modifier = Modifier.fillMaxWidth().height(260.dp)
+                )
+            }
+        }
+    }
+
+    if (showNewProject) {
+        NewProjectDialog(
+            onDismiss = { showNewProject = false },
+            onCreate = { id -> vm.newProject(id); showNewProject = false }
+        )
+    }
+
+    if (showDiagnostics) {
+        DiagnosticsDialog(
+            diagnostics = ui.diagnostics,
+            onRefresh = { vm.runDiagnostics() },
+            onDismiss = { showDiagnostics = false }
+        )
+    }
+
+    if (showRunConfig) {
+        RunConfigDialog(
+            args = ui.runArgs,
+            mainClass = ui.mainClass,
+            onArgsChange = vm::onRunArgsChanged,
+            onMainClassChange = vm::onMainClassChanged,
+            onDismiss = { showRunConfig = false }
+        )
+    }
+
+    actionTarget?.let { target ->
+        FileActionDialog(
+            target = target,
+            onRename = { newName -> vm.renameFile(target, newName); actionTarget = null },
+            onDelete = { vm.deleteFile(target); actionTarget = null },
+            onDismiss = { actionTarget = null }
+        )
+    }
+
+    if (showSettings) {
+        SettingsDialog(
+            settings = ui.settings,
+            onToggleDark = { vm.updateSettings(ui.settings.copy(darkTheme = it)) },
+            onFontSizeChange = { vm.updateSettings(ui.settings.copy(editorFontSize = it)) },
+            onAutoSaveChange = { vm.updateSettings(ui.settings.copy(autoSave = it)) },
+            onTimeoutChange = { vm.updateSettings(ui.settings.copy(timeoutSeconds = it)) },
+            onDismiss = { showSettings = false }
+        )
+    }
+
+    if (showAbout) {
+        AboutDialog(onDismiss = { showAbout = false })
+    }
+}
+
+/** 设置页 */
+@Composable
+private fun SettingsDialog(
+    settings: com.devterminal.settings.AppSettings,
+    onToggleDark: (Boolean) -> Unit,
+    onFontSizeChange: (Int) -> Unit,
+    onAutoSaveChange: (Boolean) -> Unit,
+    onTimeoutChange: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("设置") },
+        text = {
+            Column {
+                // 深色主题
+                SettingSwitch(
+                    label = "深色主题",
+                    hint = "关闭后使用浅色配色",
+                    checked = settings.darkTheme,
+                    onChange = onToggleDark
+                )
+                Spacer(Modifier.height(12.dp))
+                // 自动保存
+                SettingSwitch(
+                    label = "切换文件时自动保存",
+                    hint = "避免忘记保存导致改动丢失",
+                    checked = settings.autoSave,
+                    onChange = onAutoSaveChange
+                )
+                Spacer(Modifier.height(16.dp))
+                // 编辑器字号
+                Text(
+                    "编辑器字号：${settings.editorFontSize} sp",
+                    fontSize = 13.sp, fontWeight = FontWeight.Medium
+                )
+                Slider(
+                    value = settings.editorFontSize.toFloat(),
+                    onValueChange = { onFontSizeChange(it.roundToInt()) },
+                    valueRange = 10f..24f,
+                    steps = 13
+                )
+                Spacer(Modifier.height(8.dp))
+                // 运行超时
+                Text(
+                    "运行超时：${settings.timeoutSeconds} 秒",
+                    fontSize = 13.sp, fontWeight = FontWeight.Medium
+                )
+                Slider(
+                    value = settings.timeoutSeconds.toFloat(),
+                    onValueChange = { onTimeoutChange(it.roundToInt()) },
+                    valueRange = 10f..600f,
+                    steps = 58
+                )
+                Text(
+                    "超时后进程会被强制结束，防止死循环耗尽电量。",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } }
+    )
+}
+
+@Composable
+private fun SettingSwitch(
+    label: String,
+    hint: String,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(
+                hint,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+/** 关于页：版本与开源许可 */
+@Composable
+private fun AboutDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("关于 DevTerminal") },
+        text = {
+            Column {
+                Text("版本 1.0.0", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "完全离线的安卓编程终端。内置 Python / Java 工具链，" +
+                        "无需联网即可编写、运行、调试代码。",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                )
+                Spacer(Modifier.height(16.dp))
+                Text("开源许可", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.height(6.dp))
+                listOf(
+                    "SoraEditor — LGPL-2.1（代码编辑器）",
+                    "Termux packages — GPL 等（离线工具链）",
+                    "Jetpack Compose — Apache-2.0",
+                    "AndroidX — Apache-2.0"
+                ).forEach {
+                    Text(
+                        "· $it",
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(vertical = 1.dp)
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "本应用的离线工具链来自 Termux 项目，遵循其相应许可；" +
+                        "SoraEditor 以 LGPL 授权，用户可自行替换该库。",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
+    )
+}
+
+/** 运行配置：命令行参数 + Java 主类 */
+@Composable
+private fun RunConfigDialog(
+    args: String,
+    mainClass: String,
+    onArgsChange: (String) -> Unit,
+    onMainClassChange: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("运行配置") },
+        text = {
+            Column {
+                Text("命令行参数", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = args,
+                    onValueChange = onArgsChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("如: --name \"hello world\" -v", fontSize = 12.sp) },
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontSize = 13.sp, fontFamily = FontFamily.Monospace
+                    ),
+                    singleLine = true
+                )
+                Spacer(Modifier.height(14.dp))
+                Text("Java 主类（留空自动探测）", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = mainClass,
+                    onValueChange = onMainClassChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("如: com.example.Main", fontSize = 12.sp) },
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontSize = 13.sp, fontFamily = FontFamily.Monospace
+                    ),
+                    singleLine = true
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "参数按空格切分，含空格的参数用双引号包起来。",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } }
+    )
+}
+
+/** 文件操作：重命名 / 删除 */
+@Composable
+private fun FileActionDialog(
+    target: File,
+    onRename: (String) -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember { mutableStateOf(target.name) }
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(target.name, fontFamily = FontFamily.Monospace, fontSize = 15.sp) },
+        text = {
+            Column {
+                Text("重命名", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontSize = 13.sp, fontFamily = FontFamily.Monospace
+                    ),
+                    singleLine = true
+                )
+                if (confirmDelete) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "⚠️ 确认删除？此操作不可恢复（目录会连同内容一起删除）。",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onRename(name) },
+                enabled = name.isNotBlank() && name != target.name
+            ) { Text("重命名") }
+        },
+        dismissButton = {
+            if (confirmDelete) {
+                TextButton(onClick = onDelete) {
+                    Text("确认删除", color = MaterialTheme.colorScheme.error)
+                }
+            } else {
+                TextButton(onClick = { confirmDelete = true }) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    )
+}
+
+/** 环境自检结果对话框：展示每个工具是否可用 */
+@Composable
+private fun DiagnosticsDialog(
+    diagnostics: com.devterminal.engine.EnvDiagnostics?,
+    onRefresh: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("离线环境自检") },
+        text = {
+            if (diagnostics == null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Text("检测中…", fontSize = 13.sp)
+                }
+            } else {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            if (diagnostics.prefixReady) Icons.Filled.CheckCircle else Icons.Filled.Warning,
+                            null,
+                            tint = if (diagnostics.prefixReady) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (diagnostics.prefixReady) "工具链已安装" else "工具链缺失",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "占用空间：" + com.devterminal.engine.EnvDiagnostics
+                            .formatSize(diagnostics.installedSizeBytes),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    diagnostics.tools.forEach { t ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Icon(
+                                if (t.available) Icons.Filled.CheckCircle else Icons.Filled.Cancel,
+                                null,
+                                tint = if (t.available) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(14.dp).padding(top = 2.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(t.name, fontSize = 13.sp)
+                                Text(
+                                    t.detail,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onRefresh) { Text("重新检测") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
+    )
+}
+
+/**
+ * 工具链缺失时的引导页。
+ *
+ * 这是用户最可能撞上的失败场景（忘了打包 assets），
+ * 与其让他对着报错发呆，不如直接告诉他怎么修。
+ */
+@Composable
+private fun MissingToolchainScreen(
+    message: String,
+    detail: String?,
+    onRetry: () -> Unit
+) {
+    Box(
+        Modifier.fillMaxSize().padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.Start) {
+            Text(
+                message,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.error
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "DevTerminal 完全离线运行，因此 Python / Java 工具链必须提前打进 APK。",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+            )
+            Spacer(Modifier.height(16.dp))
+            Text("修复步骤", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            listOf(
+                "1. 在手机 Termux 里执行 tools/extract_bootstrap.sh",
+                "2. 把生成的 usrtar.zip 拷到开发机",
+                "3. 放到 app/src/main/assets/usrtar.zip",
+                "4. 重新构建并安装 APK"
+            ).forEach { step ->
+                Text(
+                    step,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                    modifier = Modifier.padding(vertical = 2.dp)
+                )
+            }
+            detail?.let {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    it,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
+            Spacer(Modifier.height(20.dp))
+            Button(onClick = onRetry) { Text("重试") }
+        }
+    }
+}
+
+@Composable
+private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("新建项目") },
+        text = {
+            Column {
+                Templates.all.forEach { tpl ->
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                            .clickable { onCreate(tpl.id) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.Code, null,
+                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(tpl.title, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text(tpl.description, fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+    )
+}

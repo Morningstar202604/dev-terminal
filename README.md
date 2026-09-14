@@ -1,0 +1,283 @@
+# DevTerminal
+
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-green.svg)](https://developer.android.com)
+[![Language](https://img.shields.io/badge/Kotlin%20%2B%20Compose-1.9.24-7F52FF.svg)](https://kotlinlang.org)
+[![FIRE](https://img.shields.io/badge/%E7%A6%BB%E7%BA%BF-100%25%20%E9%9B%B6%E7%BD%91%E7%BB%9C-orange)](#构建步骤)
+
+> 开源仓库：https://gitcode.com/badhope/dev-terminal
+
+**一个完全离线的安卓编程终端**：在手机上直接写、跑、调试 Python（首版）与 Java，界面是现代 IDE，而不是命令行的黑框。
+
+![原型预览](design/preview.png)
+
+## 与市面方案的区别
+
+| | Termux | Pydroid 3 | AidLux | **DevTerminal** |
+|---|---|---|---|---|
+| 界面 | 纯命令行 | 仅 Python，较旧 | 桌面环境，需联网初始化 | **现代 IDE：文件树+编辑器+输出** |
+| 多语言 | ✅ | ❌ | ✅ | ✅（Python 首版，Java 跟进） |
+| 完全离线 | ❌ 装包要联网 | 部分 | ❌ | ✅ **零网络，工具链内置** |
+| 开源 | ✅ | ❌ | ❌ | ✅ |
+
+## 架构
+
+```
+Compose UI 层        文件树 / 代码编辑器 / 输出面板 / 运行栏
+      │
+执行引擎层           TermuxEngine — 模拟 termux 环境变量，ProcessBuilder 起进程
+      │              实时流式回调 stdout/stderr，带超时保护
+离线工具链层         assets/usrtar.zip → 首次启动解压到 files/usr（零下载）
+```
+
+**设计取舍**：不自造终端模拟器（那是 termux 十年工程），改用 `ProcessBuilder` 直接拉起内置解释器；环境变量完全模拟 termux 布局，因此内置的 termux 预编译二进制可在 bionic 上正常运行。
+
+## 目录结构
+
+```
+dev-terminal/
+├── app/src/main/java/com/devterminal/
+│   ├── MainActivity.kt                入口
+│   ├── engine/
+│   │   ├── EnvironmentInstaller.kt    离线工具链解压 + termux 环境变量
+│   │   ├── EnvDiagnostics.kt          环境自检（真实探测每个工具）
+│   │   ├── FriendlyError.kt           报错翻译成人话
+│   │   ├── CompletionProvider.kt      静态补全词表 + 文档符号提取
+│   │   ├── TermuxEngine.kt            执行引擎（流式输出 + stdin + Java 多文件编译）
+│   │   ├── ExecutionService.kt        前台服务保活（防 Android 12+ 杀进程）
+│   │   ├── CrashLogger.kt             全局崩溃日志
+│   │   ├── RunModels.kt               Language / RunRequest / RunEvent
+│   │   └── SyntaxCheck.kt             开发期自检工具
+│   ├── settings/
+│   │   └── SettingsStore.kt           设置持久化（SharedPreferences）
+│   ├── project/
+│   │   ├── ProjectManager.kt          项目目录 / 文件树 / 读写 / 重命名
+│   │   └── Templates.kt               6 个项目模板
+│   └── ui/
+│       ├── EditorScreen.kt            主界面 Scaffold + 各对话框
+│       ├── EditorViewModel.kt         状态管理
+│       ├── CodeEditorView.kt          SoraEditor 桥接
+│       ├── StaticCompletionLanguage.kt 补全语言包装器（委托高亮 + 静态补全）
+│       ├── FileTree.kt                文件树（长按操作）
+│       ├── OutputPanel.kt             输出面板 + 交互输入行
+│       └── theme/Theme.kt             Material 3 主题
+├── design/mockup.html                 高保真可交互原型（浏览器直接打开）
+├── tools/
+│   ├── extract_bootstrap.sh           方式 A：真机 Termux 导出工具链
+│   ├── build_offline_bundle.sh        方式 B：CI 交叉编译
+│   └── selfcheck.py                   静态自检（无需 Android SDK）
+└── app/build.gradle.kts
+```
+
+## 核心功能
+
+### 1. 交互式 stdin（支持 `input()`）
+输出面板下方有输入行，运行中的进程可接收键盘输入。
+Python 的 `input()`、`raw_input()` 等阻塞式读取都能正常交互。
+
+> 实现要点：引擎用 `-u` 启动 Python 关闭缓冲，否则输出会憋到进程结束才刷出。
+
+### 2. Java 多文件编译
+点「运行」时自动：
+1. 递归收集项目内所有 `.java` 源文件
+2. `javac -encoding UTF-8 -d build/classes` 一次性编译
+3. 自动探测含 `static void main` 的类（支持 `package` 声明，拼出全限定名）
+4. `java -cp build/classes <主类>` 运行
+
+多个类互相调用、含包声明的项目都能直接跑。
+
+### 3. Python 多模块导入
+工作目录设为项目根，所以 `from utils import fib` 这类同目录导入开箱可用。
+
+### 4. 6 个项目模板
+| 模板 | 演示内容 |
+|---|---|
+| Python 空白项目 | 基础语法 |
+| Python 交互输入 | `input()` 猜数字（练习 stdin） |
+| Python 多模块 | `main.py` 导入 `utils.py` |
+| Python 数据处理 | numpy 统计计算 |
+| Java 控制台项目 | 单文件 Java |
+| Java 多文件项目 | 多类协作 + 编译流程 |
+
+### 5. 环境自检与友好报错
+
+**自检**（抽屉 → 「环境自检」）：真实启动每个工具进程，逐项显示 Python / pip / Java / javac / Git
+是否可用、版本号、占用空间。失败的项会说明原因（未安装 / 无执行权限 / 架构不匹配）。
+
+**友好报错**：运行失败时自动把原始报错翻译成可操作的中文提示，覆盖 20+ 高频错误：
+
+| 原始报错 | 提示 |
+|---|---|
+| `ModuleNotFoundError: No module named 'numpy'` | 缺模块「numpy」+ 说明离线环境要预装 |
+| `IndentationError` | 缩进不一致，建议统一 4 空格 |
+| `EOFError` | 程序在等输入但读到 EOF，用底部输入行 |
+| `cannot find symbol` | Java 类名/方法名拼错或忘了 import |
+| `Could not find or load main class` | 确认有 `public static void main` |
+| `Exec format error` | 工具链 CPU 架构与本机不符 |
+| `Killed` / `signal 9` | 被系统杀进程，去设电池无限制 |
+| `No space left` | 存储不足，建议用轻量工具链 |
+
+### 6. 运行配置
+
+顶部调音图标可配置：
+
+- **命令行参数**：支持引号，如 `--name "hello world" -v` → `["--name", "hello world", "-v"]`
+- **Java 主类**：留空则自动探测含 `main` 方法的类（含 `package` 声明）
+
+### 7. 文件管理
+
+文件树**长按**任一文件/目录，可重命名或删除（删除需二次确认）。
+
+### 8. 前台服务保活
+
+运行代码时自动启动前台服务 + 低优先级通知，规避 Android 12+ 的进程清理；
+跑完立即撤掉通知，不常驻状态栏。
+
+### 9. 导入 / 导出（SAF）
+
+抽屉 →「导入」/「导出」：
+
+- **导入**：从手机任意位置选文件，复制进当前项目并自动打开
+- **导出**：把当前编辑内容写到手机任意位置（默认用原文件名）
+
+基于 Android Storage Access Framework，不需要存储权限，兼容 Android 10+ 分区存储。
+
+### 10. 设置页
+
+抽屉 →「设置」：
+
+| 项 | 说明 |
+|---|---|
+| 深色主题 | 关掉用浅色配色，实时生效 |
+| 切换文件时自动保存 | 防止忘保存丢改动 |
+| 编辑器字号 | 10–24sp 滑杆调节 |
+| 运行超时 | 10–600 秒，防止死循环耗电 |
+
+配置存在 SharedPreferences，重启保留。
+
+### 11. 代码补全（静态）
+
+输入 ≥1 个字符即弹出候选，覆盖：
+
+- **Python**：39 个关键字、32 个内置函数、13 个标准库、5 个预装第三方库（numpy/pandas/matplotlib/flask/requests）、模块常用方法，**外加从当前文件提取的函数/类/变量名**
+- **Java**：41 个关键字、18 个常用类、各类常用方法，**外加本文件定义的类与方法**
+
+> **为什么不用 LSP**：完整 language server 是独立进程 + JSON-RPC，手机上内存与启动开销都不划算。静态词表 + 文档符号提取覆盖日常场景，零进程开销，契合「离线 + 省电」定位。
+
+### 12. 崩溃日志
+
+全局未捕获异常自动写入 `files/crash.log`（含时间、线程、完整堆栈）。
+这是给离线场景设计的：用户在手机上崩了没法连电脑看 logcat，有了它可以直接复制反馈。
+
+### 13. 静态自检脚本
+
+```bash
+python3 tools/selfcheck.py
+```
+
+无 Android SDK 时也能跑，检查：花括号配平（正确处理字符串模板）、
+Compose 图标 import 完整性、package 与目录一致性、未使用的 import。
+当前状态：**20 个文件，0 错误 0 警告**。
+
+## UI 原型
+
+`design/mockup.html` 是一个**可直接双击打开**的高保真原型，用纯 HTML/CSS/JS 实现：
+
+- 真机外框 + 模拟状态栏
+- 抽屉式文件树（可展开/折叠/切换文件）
+- 真实语法高亮的代码编辑器（Python + Java 两套词法分析）
+- 打字机效果的输出面板
+- 可交互的输入行（真的能玩猜数字）
+- 状态徽标变色、清空输出、保存提示
+
+改 UI 前先在这里看效果，确认后再落到 Kotlin 代码。
+
+
+## 构建步骤
+
+### 1. 准备离线工具链（关键，决定「完全离线」）
+
+**方式 A（推荐，最省事）**：在手机 Termux 里执行 `tools/extract_bootstrap.sh`，
+产出 `usrtar.zip`，拷到 `app/src/main/assets/usrtar.zip`。
+
+**方式 B**：在 Linux/CI 跑 `tools/build_offline_bundle.sh`，用官方容器构建 bootstrap。
+
+> 没有这一步，App 能启动但显示「未找到内置工具链」，不会崩溃。
+
+### 2. 补齐 SoraEditor 的语法配置
+
+从 [sora-editor](https://github.com/Rosemoe/sora-editor) 仓库的 `language-textmate`
+模块复制 `languages.json`、语法文件与主题到：
+
+```
+app/src/main/assets/textmate/
+├── languages.json
+├── themes/darcula.json
+└── syntaxes/*.json
+```
+
+缺失时编辑器退化为纯文本（不崩）。
+
+### 3. 构建 APK
+
+```bash
+cd dev-terminal
+./gradlew assembleDebug        # 产物：app/build/outputs/apk/debug/app-debug.apk
+```
+
+要求：JDK 17+、Android SDK（`compileSdk 34`）。首次构建会下载 Gradle 与依赖，需联网；
+**构建完成后，App 运行时不联网**。
+
+### 4. 真机验证
+
+```bash
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+启动后应看到：环境就绪提示 → 默认 Python 项目 → 点 ▶ 运行 → 输出面板出现结果。
+
+## 里程碑
+
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| M1 | Gradle 工程 + Compose 外壳 | ✅ |
+| M2 | 离线执行引擎（流式输出） | ✅ |
+| M3 | 内置离线 Python 工具链 | ✅ |
+| M4 | Java 多文件编译 + 运行 | ✅ |
+| M5 | 交互式 stdin（`input()` 可用） | ✅ |
+| M6 | 环境自检 + 友好报错 + 运行配置 + 文件管理 + 前台服务 | ✅ |
+| M7 | SAF 导入 / 导出 | ✅ |
+| M8 | 设置页 + 主题切换 | ✅ |
+| M9 | 静态代码补全 + 崩溃日志 + 自检脚本 | ✅ |
+
+## 已知限制
+
+- **APK 体积**：含 Python prefix 约 80–120MB，加 JDK 后 400–700MB。不适合走 Google Play，
+  建议 F-Droid / GitHub Releases / 官网直下。
+- **Java 仅命令行**：Android 无 X11，OpenJDK 为 headless，无 Swing/JavaFX。
+- **输入行为整行提交**：stdin 按行写入（模拟回车），暂不支持逐字符输入、方向键、
+  Tab 补全等终端特性——需要完整 pty。
+- **补全为静态词表**：不做语义分析，因此不能补全 `obj.` 之后的成员（需要 LSP 或类型推断）。
+- **复制 / 粘贴**：编辑器本身依赖系统剪贴板，长按菜单由 SoraEditor 提供。
+- **前台服务为 specialUse 类型**：上架 Google Play 需额外声明用途说明。
+- **沙盒无法出 APK**：本仓库在无 Android SDK 的环境下开发，只做了静态自检；
+  需要 JDK 17 + Android SDK 才能 `assembleDebug`。
+
+## 许可证
+
+- 本项目代码：**Apache License 2.0**，见 [LICENSE](LICENSE)。
+- 第三方组件声明（SoraEditor LGPL-2.1、内置工具链等）：见 [NOTICE.md](NOTICE.md)。
+
+## 参与贡献
+
+欢迎 Issue / PR：
+
+1. Fork 本仓库，从 `main` 拉分支
+2. 改动 Kotlin 代码后请先跑 `python3 tools/selfcheck.py`（0 错误 0 警告再提交）
+3. UI 改动请先在 `design/mockup.html` 原型里验证效果
+4. Commit 信息用祈使句，如 `Fix stdin deadlock in TermuxEngine`
+
+## 沙盒环境说明
+
+本项目源码可在任意装了 JDK 17 + Android SDK 的机器上构建。
+在纯 Linux 沙盒（无 Android SDK）中只能做静态检查，无法产出 APK。

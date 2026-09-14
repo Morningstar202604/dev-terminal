@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DevTerminal · 高保真原型</title>
+<style>
+:root{
+  /* ---- 配色（对齐 Material 3 深色主题 / VSCode Dark+） ---- */
+  --bg:            #0b1120;
+  --surface:       #111827;
+  --surface-2:     #1f2937;
+  --surface-3:     #273244;
+  --outline:       #374151;
+  --outline-soft:  #2a3546;
+
+  --primary:       #6366f1;
+  --primary-dark:  #4338ca;
+  --primary-soft:  rgba(99,102,241,.16);
+  --accent:        #22d3ee;
+
+  --text:          #e5e7eb;
+  --text-dim:      #9ca3af;
+  --text-faint:    #6b7280;
+
+  --green:         #34d399;
+  --amber:         #fbbf24;
+
+  /* 语法高亮 */
+  --syn-kw:        #c586c0;
+  --syn-str:       #ce9178;
+  --syn-com:       #6a9955;
+  --syn-fn:        #dcdcaa;
+  --syn-num:       #b5cea8;
+  --syn-bi:        #4ec9b0;
+
+  --mono: "SFMono-Regular", "JetBrains Mono", Menlo, Consolas,
+          "Liberation Mono", "DejaVu Sans Mono", monospace;
+  --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+
+  --radius: 10px;
+  --radius-sm: 8px;
+  --shadow: 0 24px 60px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.4);
+}
+
+*{ box-sizing: border-box; margin:0; padding:0; }
+
+html,body{ height:100%; }
+
+body{
+  display:flex; align-items:center; justify-content:center;
+  min-height:100vh; padding:28px 16px;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, #16202f 0%, transparent 70%),
+    #1c1f26;
+  font-family: var(--ui);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============ 手机外框 ============ */
+.device{
+  position: relative;
+  width: 390px; height: 844px;
+  background: #05070d;
+  border: 10px solid #232833;
+  border-radius: 44px;
+  box-shadow: var(--shadow), 0 0 0 2px #0e1219 inset;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex; flex-direction: column;
+}
+
+/* 打孔摄像头 */
+.notch{
+  position:absolute; top:12px; left:50%; transform:translateX(-50%);
+  width:9px; height:9px; border-radius:50%;
+  background:#0a0d14; box-shadow: 0 0 0 2px #171c26;
+  z-index: 60; pointer-events:none;
+}
+
+/* ============ 假 Android 状态栏 ============ */
+.statusbar{
+  flex: 0 0 auto;
+  height: 32px; padding: 0 18px;
+  display:flex; align-items:center; justify-content:space-between;
+  font-size: 12px; font-weight:600; letter-spacing:.2px;
+  color:#cbd5e1;
+  background: var(--surface);
+  padding-top: 4px;
+  z-index: 50;
+  user-select:none;
+}
+.statusbar .sb-right{ display:flex; align-items:center; gap:6px; }
+.sb-bars{ display:flex; align-items:flex-end; gap:2px; height:11px; }
+.sb-bars i{ display:block; width:3px; border-radius:1px; background:#cbd5e1; }
+.sb-bars i:nth-child(1){height:4px} .sb-bars i:nth-child(2){height:6px}
+.sb-bars i:nth-child(3){height:8px} .sb-bars i:nth-child(4){height:11px}
+.battery{
+  width:22px; height:11px; border:1.5px solid #cbd5e1; border-radius:3px;
+  position:relative; padding:1.5px;
+}
+.battery::after{
+  content:""; position:absolute; right:-3.5px; top:50%; transform:translateY(-50%);
+  width:2px; height:5px; background:#cbd5e1; border-radius:0 1px 1px 0;
+}
+.battery i{ display:block; height:100%; width:72%; background:#cbd5e1; border-radius:1px; }
+
+/* ============ App Bar ============ */
+.appbar{
+  flex: 0 0 auto;
+  height: 56px; padding: 0 6px 0 4px;
+  display: flex; align-items: center; gap: 4px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--outline-soft);
+  z-index: 40;
+}
+.icon-btn{
+  width:40px; height:40px; flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center;
+  border:none; border-radius:50%; background:transparent; color:var(--text-dim);
+  cursor:pointer; transition: background .16s ease, color .16s ease, transform .1s ease;
+}
+.icon-btn:hover{ background: rgba(255,255,255,.07); color: var(--text); }
+.icon-btn:active{ transform: scale(.9); }
+.icon-btn svg{ width:20px; height:20px; }
+
+.appbar-title{
+  flex:1; min-width:0;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+}
+.appbar-title .dot{
+  width:6px; height:6px; border-radius:50%; background:var(--accent);
+  flex:0 0 auto; box-shadow:0 0 0 3px rgba(34,211,238,.14);
+}
+#currentFile{
+  font-family: var(--mono); font-size: 14px; font-weight:500;
+  color: var(--text); letter-spacing:.2px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+.run-btn{
+  flex:0 0 auto; height:34px; margin-right:2px; padding:0 14px 0 11px;
+  display:flex; align-items:center; gap:6px;
+  font-family: var(--ui); font-size:13px; font-weight:600; letter-spacing:.2px;
+  color:#fff; background: var(--primary);
+  border:none; border-radius: 17px; cursor:pointer;
+  box-shadow: 0 3px 12px rgba(99,102,241,.34);
+  transition: background .16s ease, transform .1s ease, box-shadow .16s ease;
+}
+.run-btn:hover{ background:#7276f5; }
+.run-btn:active{ transform: scale(.95); box-shadow:0 1px 6px rgba(99,102,241,.3); }
+.run-btn svg{ width:13px; height:13px; }
+.run-btn[data-running="true"]{
+  background: var(--surface-2); box-shadow:none; pointer-events:none; opacity:.72;
+}
+
+/* ============ 主体 ============ */
+.body{
+  position: relative; flex:1 1 auto; min-height:0;
+  display:flex; flex-direction:column;
+  background: var(--bg);
+}
+
+/* ============ 抽屉 ============ */
+.scrim{
+  position:absolute; inset:0; z-index:30;
+  background: rgba(3,7,18,.62);
+  opacity:0; visibility:hidden;
+  transition: opacity .26s ease, visibility .26s ease;
+}
+.scrim.open{ opacity:1; visibility:visible; }
+
+.drawer{
+  position:absolute; top:0; left:0; bottom:0; z-index:35;
+  width: 264px;
+  background: var(--surface);
+  border-right: 1px solid var(--outline-soft);
+  transform: translateX(-102%);
+  transition: transform .28s cubic-bezier(.22,.61,.36,1);
+  display:flex; flex-direction:column;
+  box-shadow: 8px 0 28px rgba(0,0,0,.42);
+}
+.drawer.open{ transform: translateX(0); }
+
+.drawer-head{
+  flex:0 0 auto; padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--outline-soft);
+}
+.drawer-head .kicker{
+  font-size:10px; font-weight:700; letter-spacing:1.4px;
+  color: var(--text-faint); text-transform: uppercase;
+  font-family: var(--ui);
+}
+.drawer-head .proj{
+  margin-top:6px; display:flex; align-items:center; gap:8px;
+  font-size:13.5px; font-weight:600; color:var(--text);
+}
+.drawer-head .proj svg{ width:15px; height:15px; color:var(--accent); flex:0 0 auto; }
+
+.tree{
+  flex:1 1 auto; overflow-y:auto; padding: 8px 6px 16px;
+  scrollbar-width: thin; scrollbar-color: var(--outline) transparent;
+}
+
+/* 抽屉底部工具栏：两行，每行三个操作 */
+.drawer-foot{
+  flex:0 0 auto;
+  display:flex; flex-direction:column; gap:6px;
+  padding: 10px 12px 14px;
+  border-top: 1px solid var(--outline-soft);
+}
+.foot-row{ display:flex; gap:6px; }
+.ghost-btn{
+  flex:1 1 0;
+  display:flex; align-items:center; justify-content:center; gap:5px;
+  padding: 8px 6px;
+  font-family: var(--ui); font-size:11.5px; font-weight:600;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--outline);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.ghost-btn svg{ width:14px; height:14px; flex:0 0 auto; }
+.ghost-btn:hover{ background: var(--surface-2); color: var(--text); border-color: var(--primary); }
+.ghost-btn:active{ transform: translateY(1px); }
+.tree::-webkit-scrollbar{ width:6px; }
+.tree::-webkit-scrollbar-thumb{ background: var(--outline); border-radius:3px; }
+
+.node{ list-style:none; }
+.row{
+  display:flex; align-items:center; gap:6px;
+  height:30px; padding-right:8px; border-radius:var(--radius-sm);
+  cursor:pointer; user-select:none;
+  color: var(--text-dim); font-size:13px;
+  transition: background .13s ease, color .13s ease;
+}
+.row:hover{ background: rgba(255,255,255,.055); color: var(--text); }
+.row.active{
+  background: var(--primary-soft); color:#c7d2fe; font-weight:600;
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+.row.active .fname{ color:#c7d2fe; }
+
+.caret{
+  width:16px; height:16px; flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:3px; color:var(--text-faint);
+  transition: transform .18s ease, background .13s ease;
+}
+.caret:hover{ background: rgba(255,255,255,.1); color:var(--text); }
+.caret svg{ width:9px; height:9px; }
+.caret.closed{ transform: rotate(-90deg); }
+.caret.blank{ visibility:hidden; }
+
+.fname{
+  font-family: var(--mono); font-size:12.5px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.glyph{ width:14px; height:14px; flex:0 0 auto; opacity:.9; }
+.glyph.py{ color:#5b9bd5; }
+.glyph.java{ color:#e08a4a; }
+
+.children{ overflow:hidden; }
+.children.collapsed{ display:none; }
+.indent-1{ padding-left: 14px; }
+.indent-2{ padding-left: 30px; }
+
+.lang-tag{
+  margin-left:auto; font-family:var(--mono); font-size:9.5px; font-weight:700;
+  letter-spacing:.6px; padding:1px 5px; border-radius:4px;
+  color:var(--text-faint); background: rgba(255,255,255,.05);
+}
+
+/* ============ 编辑器 ============ */
+.editor{
+  flex: 1 1 auto; min-height:0; position:relative;
+  display:flex; overflow:hidden;
+  background: var(--bg);
+}
+.gutter{
+  flex:0 0 auto; width:46px; padding:12px 0 24px;
+  background: var(--bg);
+  border-right: 1px solid var(--outline-soft);
+  text-align:right; overflow:hidden;
+}
+.gutter span{
+  display:block; padding-right:10px;
+  font-family: var(--mono); font-size:12.5px; line-height:20px;
+  color: var(--text-faint);
+}
+.gutter span.cur{ color: var(--accent); }
+
+.code-wrap{ flex:1 1 auto; overflow:auto; padding:12px 16px 24px 12px; }
+.code-wrap::-webkit-scrollbar{ width:8px; height:8px; }
+.code-wrap::-webkit-scrollbar-thumb{ background:var(--surface-3); border-radius:4px; }
+.code-wrap::-webkit-scrollbar-thumb:hover{ background:var(--outline); }
+
+pre.code{
+  font-family: var(--mono); font-size:12.5px; line-height:20px;
+  white-space:pre; tab-size:4; color: var(--text);
+  margin:0;
+}
+pre.code .ln{ display:block; }
+pre.code .ln:hover{ background: rgba(255,255,255,.028); }
+pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var(--primary); }
+
+/* 语法着色 */
+.tok-kw  { color: var(--syn-kw); }
+.tok-str { color: var(--syn-str); }
+.tok-com { color: var(--syn-com); font-style: italic; }
+.tok-fn  { color: var(--syn-fn); }
+.tok-num { color: var(--syn-num); }
+.tok-bi  { color: var(--syn-bi); }
+.tok-op  { color: var(--text-dim); }
+.tok-dec { color: #d7ba7d; }
+
+/* ============ 分隔条 ============ */
+.splitter{
+  flex: 0 0 auto; height:9px; position:relative;
+  background: var(--surface);
+  border-top: 1px solid var(--outline-soft);
+  border-bottom: 1px solid var(--outline-soft);
+  cursor: row-resize; display:flex; align-items:center; justify-content:center;
+  transition: background .15s ease;
+}
+.splitter:hover{ background: var(--surface-2); }
+.splitter::after{
+  content:""; width:34px; height:3px; border-radius:2px;
+  background: var(--outline); transition: background .15s ease;
+}
+.splitter:hover::after{ background: var(--primary); }
+
+/* ============ 输出面板 ============ */
+.output{
+  flex: 0 0 auto; height: 216px;
+  display:flex; flex-direction:column;
+  background: #080c16; min-height: 120px;
+}
+.out-head{
+  flex:0 0 auto; height:36px; padding:0 6px 0 14px;
+  display:flex; align-items:center; gap:9px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--outline-soft);
+}
+.out-head .title{
+  font-size:12px; font-weight:700; letter-spacing:.8px;
+  color: var(--text-dim); text-transform: uppercase;
+}
+.badge{
+  display:inline-flex; align-items:center; gap:5px;
+  height:20px; padding:0 9px 0 7px; border-radius:10px;
+  font-size:10.5px; font-weight:700; letter-spacing:.4px;
+  font-family: var(--ui);
+  transition: background .2s ease, color .2s ease;
+}
+.badge .pip{ width:6px; height:6px; border-radius:50%; background: currentColor; }
+.badge.idle{ color:var(--text-faint); background: rgba(255,255,255,.06); }
+.badge.running{ color:var(--amber); background: rgba(251,191,36,.14); }
+.badge.running .pip{ animation: pulse 1s ease-in-out infinite; }
+.badge.ok{ color:var(--green); background: rgba(52,211,153,.14); }
+@keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.25} }
+
+.out-head .spacer{ flex:1; }
+
+.out-body{
+  flex:1 1 auto; min-height:0; overflow-y:auto;
+  padding: 10px 14px;
+  font-family: var(--mono); font-size:12.5px; line-height:19px;
+  color: #cbd5e1;
+  scrollbar-width: thin; scrollbar-color: var(--outline) transparent;
+}
+.out-body::-webkit-scrollbar{ width:7px; }
+.out-body::-webkit-scrollbar-thumb{ background: var(--surface-3); border-radius:4px; }
+
+.out-body .l{ display:block; white-space:pre-wrap; word-break:break-word; }
+.out-body .l.echo{ color: var(--accent); }
+.out-body .l.hint{ color: var(--text-faint); }
+.out-body .l.warn{ color: var(--amber); }
+.out-body .l.err{ color:#f87171; }
+.out-body .l.ok{ color: var(--green); font-weight:600; }
+.out-body .l.sys{ color:#818cf8; }
+
+.caret-line{
+  display:inline-block; width:7px; height:14px; margin-left:1px;
+  background: var(--accent); vertical-align:-2px;
+  animation: blink 1.05s steps(1,end) infinite;
+}
+@keyframes blink{ 0%,50%{opacity:1} 50.01%,100%{opacity:0} }
+
+/* ============ 输入行 ============ */
+.input-bar{
+  flex:0 0 auto; padding:8px 10px 10px;
+  display:flex; align-items:center; gap:8px;
+  background: var(--surface);
+  border-top: 1px solid var(--outline-soft);
+}
+.input-bar .prompt{
+  flex:0 0 auto; font-family:var(--mono); font-size:13px;
+  color: var(--green); font-weight:700;
+}
+#stdin{
+  flex:1 1 auto; min-width:0; height:34px; padding:0 12px;
+  font-family: var(--mono); font-size:12.5px; color:var(--text);
+  background: #0d1420;
+  border:1px solid var(--outline); border-radius: var(--radius-sm);
+  outline:none; transition: border-color .16s ease, box-shadow .16s ease;
+}
+#stdin::placeholder{ color: var(--text-faint); }
+#stdin:focus{ border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,.18); }
+
+.send-btn{
+  flex:0 0 auto; width:34px; height:34px;
+  display:flex; align-items:center; justify-content:center;
+  border:none; border-radius:var(--radius-sm);
+  background: var(--primary); color:#fff; cursor:pointer;
+  transition: background .16s ease, transform .1s ease, opacity .16s ease;
+}
+.send-btn:hover{ background:#7276f5; }
+.send-btn:active{ transform: scale(.92); }
+.send-btn:disabled{ opacity:.4; cursor:not-allowed; background: var(--outline); }
+.send-btn svg{ width:16px; height:16px; }
+
+/* 底部安卓导航条 */
+.navbar{
+  flex:0 0 auto; height:22px;
+  display:flex; align-items:center; justify-content:center;
+  background: var(--surface);
+}
+.navbar i{ width:104px; height:4px; border-radius:2px; background:#3f4a5c; }
+
+/* 提示条 */
+.toast{
+  position:absolute; left:50%; bottom:16px; transform: translate(-50%, 14px);
+  z-index:70; padding:8px 16px; border-radius:18px;
+  background: rgba(31,41,55,.96); border:1px solid var(--outline);
+  color: var(--text); font-size:12px; font-weight:500;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  opacity:0; visibility:hidden; pointer-events:none;
+  transition: opacity .22s ease, transform .22s ease, visibility .22s ease;
+  white-space:nowrap;
+}
+.toast.show{ opacity:1; visibility:visible; transform: translate(-50%, 0); }
+
+@media (prefers-reduced-motion: reduce){
+  *{ animation-duration:.01ms !important; transition-duration:.01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="device">
+  <div class="notch"></div>
+
+  <!-- 假 Android 状态栏 -->
+  <div class="statusbar">
+    <span id="clock">9:41</span>
+    <span class="sb-right">
+      <span class="sb-bars"><i></i><i></i><i></i><i></i></span>
+      <svg width="14" height="12" viewBox="0 0 24 20" fill="none" stroke="#cbd5e1" stroke-width="2.2" stroke-linecap="round">
+        <path d="M2 7a15 15 0 0 1 20 0"/><path d="M6 11a9 9 0 0 1 12 0"/><path d="M10 15.2a3 3 0 0 1 4 0"/>
+      </svg>
+      <span class="battery"><i></i></span>
+    </span>
+  </div>
+
+  <!-- App Bar -->
+  <header class="appbar">
+    <button class="icon-btn" id="btnMenu" title="文件" aria-label="打开文件抽屉">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M4 6h16M4 12h16M4 18h16"/>
+      </svg>
+    </button>
+
+    <div class="appbar-title">
+      <span class="dot"></span>
+      <span id="currentFile">main.py</span>
+    </div>
+
+    <button class="icon-btn" id="btnSave" title="保存" aria-label="保存文件">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+        <path d="M17 21v-8H7v8M7 3v5h8"/>
+      </svg>
+    </button>
+
+    <button class="run-btn" id="btnRun" data-running="false">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>
+      <span id="runLabel">运行</span>
+    </button>
+  </header>
+
+  <div class="body">
+    <!-- 抽屉遮罩 -->
+    <div class="scrim" id="scrim"></div>
+
+    <!-- 左侧抽屉：文件树 -->
+    <aside class="drawer" id="drawer">
+      <div class="drawer-head">
+        <div class="kicker">项目</div>
+        <div class="proj">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          </svg>
+          <span>离线工作区</span>
+          <span class="lang-tag">3 FILES</span>
+        </div>
+      </div>
+
+      <ul class="tree" id="tree">
+        <!-- 目录 -->
+        <li class="node">
+          <div class="row" data-toggle="g-python" style="padding-left:8px">
+            <span class="caret" data-caret="g-python">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 9l6 6 6-6z"/></svg>
+            </span>
+            <span class="fname">my-first-project</span>
+          </div>
+          <ul class="children" id="g-python">
+            <li class="node">
+              <div class="row active indent-2" data-file="main.py">
+                <span class="caret blank"></span>
+                <svg class="glyph py" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+                  <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/>
+                </svg>
+                <span class="fname">main.py</span>
+              </div>
+            </li>
+            <li class="node">
+              <div class="row indent-2" data-file="utils.py">
+                <span class="caret blank"></span>
+                <svg class="glyph py" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+                  <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/>
+                </svg>
+                <span class="fname">utils.py</span>
+              </div>
+            </li>
+            <li class="node">
+              <div class="row indent-2" data-toggle="g-java">
+                <span class="caret" data-caret="g-java">
+                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 9l6 6 6-6z"/></svg>
+                </span>
+                <span class="fname">java-demo</span>
+                <span class="lang-tag">JAVA</span>
+              </div>
+              <ul class="children collapsed" id="g-java">
+                <li class="node">
+                  <div class="row" style="padding-left:46px" data-file="java-demo/Main.java">
+                    <span class="caret blank"></span>
+                    <svg class="glyph java" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+                      <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/>
+                    </svg>
+                    <span class="fname">Main.java</span>
+                  </div>
+                </li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+      </ul>
+
+      <div class="drawer-foot">
+        <div class="foot-row">
+          <button class="ghost-btn" id="btnNewProject">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            <span>新项目</span>
+          </button>
+          <button class="ghost-btn" id="btnImport">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 11l5 5 5-5M4 21h16"/></svg>
+            <span>导入</span>
+          </button>
+          <button class="ghost-btn" id="btnExport">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 7l5-5 5 5M4 21h16"/></svg>
+            <span>导出</span>
+          </button>
+        </div>
+        <div class="foot-row">
+          <button class="ghost-btn" id="btnDiagnostics">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg>
+            <span>自检</span>
+          </button>
+          <button class="ghost-btn" id="btnSettings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+            <span>设置</span>
+          </button>
+          <button class="ghost-btn" id="btnAbout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8h.01"/></svg>
+            <span>关于</span>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 编辑器 -->
+    <div class="editor">
+      <div class="gutter" id="gutter"></div>
+      <div class="code-wrap" id="codeWrap">
+        <pre class="code" id="code"></pre>
+      </div>
+    </div>
+
+    <!-- 分隔条 -->
+    <div class="splitter" id="splitter" title="拖动调整输出面板高度"></div>
+
+    <!-- 输出面板 -->
+    <section class="output" id="output" style="height:216px">
+      <div class="out-head">
+        <span class="title">输出</span>
+        <span class="badge idle" id="badge"><span class="pip"></span><span id="badgeText">空闲</span></span>
+        <span class="spacer"></span>
+        <button class="icon-btn" id="btnClear" title="清空输出" aria-label="清空输出">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>
+            <path d="M10 11v6M14 11v6"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="out-body" id="outBody"></div>
+
+      <div class="input-bar">
+        <span class="prompt">&gt;</span>
+        <input id="stdin" type="text" placeholder="输入后回车发送…" autocomplete="off" spellcheck="false">
+        <button class="send-btn" id="btnSend" disabled title="发送" aria-label="发送输入">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>
+          </svg>
+        </button>
+      </div>
+    </section>
+  </div>
+
+  <div class="navbar"><i></i></div>
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ==================================================================
+   1. 数据：文件内容 + 高亮词表
+   ================================================================== */
+const FILES = {
+  "main.py": {
+    name: "main.py",
+    lang: "python",
+    code: [
+      "# -*- coding: utf-8 -*-",
+      "import random",
+      "",
+      "def guess_game():",
+      '    """猜数字小游戏"""',
+      "    secret = random.randint(1, 100)",
+      "    tries = 0",
+      '    print("我在想一个 1-100 的数字，猜猜看？")',
+      "    while True:",
+      '        guess = int(input("请输入: "))',
+      "        tries += 1",
+      "        if guess < secret:",
+      '            print("太小了！")',
+      "        elif guess > secret:",
+      '            print("太大了！")',
+      "        else:",
+      '            print(f"猜对了！用了 {tries} 次")',
+      "            break",
+      "",
+      'if __name__ == "__main__":',
+      "    guess_game()"
+    ].join("\n")
+  },
+
+  "utils.py": {
+    name: "utils.py",
+    lang: "python",
+    code: [
+      "# -*- coding: utf-8 -*-",
+      "# 通用小工具：被 main.py 复用",
+      "import time",
+      "",
+      "def timer(func):",
+      '    """装饰器：统计函数耗时"""',
+      "    def wrapper(*args, **kwargs):",
+      "        start = time.perf_counter()",
+      "        result = func(*args, **kwargs)",
+      "        cost = time.perf_counter() - start",
+      '        print(f"[{func.__name__}] 耗时 {cost * 1000:.2f} ms")',
+      "        return result",
+      "    return wrapper",
+      "",
+      "@timer",
+      "def fib(n: int) -> int:",
+      "    a, b = 0, 1",
+      "    for _ in range(n):",
+      "        a, b = b, a + b",
+      "    return a",
+      "",
+      'if __name__ == "__main__":',
+      "    print(fib(200))"
+    ].join("\n")
+  },
+
+  "java-demo/Main.java": {
+    name: "Main.java",
+    lang: "java",
+    code: [
+      "import java.util.Scanner;",
+      "",
+      "/** 猜数字小游戏 —— Java 版 */",
+      "public class Main {",
+      "    private static final int SECRET = 73;",
+      "",
+      "    public static void main(String[] args) {",
+      "        Scanner sc = new Scanner(System.in);",
+      '        System.out.println("我在想一个 1-100 的数字，猜猜看？");',
+      "        int tries = 0;",
+      "        while (true) {",
+      '            System.out.print("请输入: ");',
+      "            int guess = sc.nextInt();",
+      "            tries++;",
+      "            if (guess < SECRET) {",
+      '                System.out.println("太小了！");',
+      "            } else if (guess > SECRET) {",
+      '                System.out.println("太大了！");',
+      "            } else {",
+      '                System.out.println("猜对了！用了 " + tries + " 次");',
+      "                break;",
+      "            }",
+      "        }",
+      "        sc.close();",
+      "    }",
+      "}"
+    ].join("\n")
+  }
+};
+
+const PY_KW = new Set(("False None True and as assert async await break class continue def del elif else " +
+  "except finally for from global if import in is lambda nonlocal not or pass raise return try while " +
+  "with yield match case").split(" "));
+const PY_BI = new Set(("print input int str float len range sum min max abs list dict set tuple type open " +
+  "enumerate zip sorted map filter isinstance random exit repr round divmod").split(" "));
+
+const JV_KW = new Set(("abstract assert boolean break byte case catch char class const continue default do " +
+  "double else enum extends final finally float for goto if implements import instanceof int interface " +
+  "long native new package private protected public return short static strictfp super switch " +
+  "synchronized this throw throws transient try void volatile while var record sealed yield").split(" "));
+const JV_TYPE = new Set(("String System Scanner Integer Long Double Boolean Character Object Math Arrays " +
+  "List ArrayList Map HashMap Set HashSet Optional Thread StringBuilder").split(" "));
+
+/* ==================================================================
+   2. 极简词法高亮器
+   ================================================================== */
+function esc(s){
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+/* 用正则一次性切分：注释 / 字符串 / 数字 / 标识符 / 其它 */
+function tokenize(line, lang){
+  const isPy = lang === "python";
+  const parts = [];
+  let i = 0;
+
+  const reComment = isPy ? /#/ : /\/\//;
+  const ident = /[A-Za-z_$\u4e00-\u9fa5][\w$\u4e00-\u9fa5]*/;
+
+  while (i < line.length){
+    const ch = line[i];
+    const rest = line.slice(i);
+
+    // 注释
+    if (rest.startsWith("/*") && !isPy){
+      parts.push({ t:"com", v: rest });
+      break;
+    }
+    if (reComment.test(ch) && (isPy ? ch === "#" : rest.startsWith("//"))){
+      parts.push({ t:"com", v: rest });
+      break;
+    }
+
+    // 字符串（含 f-string 前缀）
+    const strM = rest.match(/^(?:[fFrRbBuU]{0,2})("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/);
+    if (strM){
+      const raw = strM[1];
+      const prefix = strM[0].slice(0, strM[0].length - raw.length);
+      parts.push({ t:"str", v: prefix + raw });
+      i += strM[0].length;
+      continue;
+    }
+
+    // 数字
+    const numM = rest.match(/^\d+\.?\d*([eE][+-]?\d+)?[fFdDlL]?/);
+    if (numM && /\d/.test(ch)){
+      parts.push({ t:"num", v: numM[0] });
+      i += numM[0].length;
+      continue;
+    }
+
+    // 标识符 / 关键字
+    const idM = rest.match(ident);
+    if (idM && idM[0] === rest.slice(0, idM[0].length) && /[A-Za-z_$\u4e00-\u9fa5]/.test(ch)){
+      const w = idM[0];
+      const after = rest.slice(w.length);
+      const before = line.slice(0, i);
+      let cls = "";
+
+      if (isPy){
+        if (PY_KW.has(w)) cls = "kw";
+        else if (PY_BI.has(w)) cls = "bi";
+        else if (before.trim().startsWith("def ") || before.trim().startsWith("class ")) cls = "fn";
+        else if (/^\s*\(/.test(after)) cls = "fn";
+      } else {
+        if (JV_KW.has(w)) cls = "kw";
+        else if (JV_TYPE.has(w)) cls = "bi";
+        else if (/^\s*\(/.test(after)) cls = "fn";
+      }
+
+      parts.push({ t: cls, v: w });
+      i += w.length;
+      continue;
+    }
+
+    // 其它字符：聚合到下一个特殊字符
+    const otherM = rest.match(/^[^A-Za-z_$\u4e00-\u9fa5"'#\d\/]+/);
+    if (otherM){ parts.push({ t:"op", v: otherM[0] }); i += otherM[0].length; continue; }
+
+    parts.push({ t:"op", v: ch });
+    i++;
+  }
+
+  return parts.map(p =>
+    p.t ? '<span class="tok-' + p.t + '">' + esc(p.v) + "</span>" : esc(p.v)
+  ).join("");
+}
+
+function highlight(code, lang){
+  return code.split("\n").map(function(line){
+    const inner = line.length ? tokenize(line, lang) : "\u200b";
+    return '<span class="ln">' + inner + "</span>";
+  }).join("");
+}
+
+/* ==================================================================
+   3. DOM 引用
+   ================================================================== */
+const $ = function(id){ return document.getElementById(id); };
+
+const codeEl    = $("code");
+const gutterEl  = $("gutter");
+const codeWrap  = $("codeWrap");
+const fileLabel = $("currentFile");
+const badge     = $("badge");
+const badgeText = $("badgeText");
+const outBody   = $("outBody");
+const stdin     = $("stdin");
+const btnSend   = $("btnSend");
+const btnRun    = $("btnRun");
+const runLabel  = $("runLabel");
+const drawer    = $("drawer");
+const scrim     = $("scrim");
+const splitter  = $("splitter");
+const output    = $("output");
+const toastEl   = $("toast");
+
+/* ==================================================================
+   4. 编辑器渲染
+   ================================================================== */
+let activeFile = "main.py";
+
+function renderEditor(key){
+  const f = FILES[key];
+  if (!f) return;
+  activeFile = key;
+
+  codeEl.innerHTML = highlight(f.code, f.lang);
+
+  const lines = f.code.split("\n").length;
+  let g = "";
+  for (let n = 1; n <= lines; n++){
+    g += '<span class="' + (n === 1 ? "cur" : "") + '">' + n + "</span>";
+  }
+  gutterEl.innerHTML = g;
+
+  fileLabel.textContent = f.name;
+  codeWrap.scrollTop = 0;
+
+  // 抽屉里的选中态
+  document.querySelectorAll(".row[data-file]").forEach(function(r){
+    r.classList.toggle("active", r.dataset.file === key);
+  });
+}
+
+/* ==================================================================
+   5. 抽屉交互
+   ================================================================== */
+let drawerOpen = false;
+
+function setDrawer(open){
+  drawerOpen = open;
+  drawer.classList.toggle("open", open);
+  scrim.classList.toggle("open", open);
+}
+
+$("btnMenu").addEventListener("click", function(){ setDrawer(!drawerOpen); });
+scrim.addEventListener("click", function(){ setDrawer(false); });
+
+document.querySelectorAll(".row[data-toggle]").forEach(function(row){
+  row.addEventListener("click", function(){
+    const id = row.dataset.toggle;
+    const group = $(id);
+    const caret = row.querySelector('[data-caret="' + id + '"]');
+    const collapsed = group.classList.toggle("collapsed");
+    if (caret) caret.classList.toggle("closed", collapsed);
+  });
+});
+
+document.querySelectorAll(".row[data-file]").forEach(function(row){
+  row.addEventListener("click", function(){
+    const key = row.dataset.file;
+    if (key === activeFile){ setDrawer(false); return; }
+    renderEditor(key);
+    setDrawer(false);
+    clearOutput();
+    appendLine("sys", "已切换到 " + FILES[key].name + " —— 点击「运行」执行");
+    setBadge("idle", "空闲");
+    setRunning(false);
+    killTimers();
+    removePendingCaret();
+    running = false;
+    lockInput();
+    toast("已打开 " + FILES[key].name);
+  });
+});
+
+/* ==================================================================
+   6. 输出面板
+   ================================================================== */
+function appendLine(cls, text){
+  const span = document.createElement("span");
+  span.className = "l" + (cls ? " " + cls : "");
+  span.textContent = text;
+  outBody.appendChild(span);
+  outBody.scrollTop = outBody.scrollHeight;
+  return span;
+}
+
+function clearOutput(){ outBody.innerHTML = ""; }
+
+function setBadge(state, text){
+  badge.className = "badge " + state;
+  badgeText.textContent = text;
+}
+
+function setRunning(on){
+  btnRun.dataset.running = on ? "true" : "false";
+  runLabel.textContent = on ? "运行中" : "运行";
+}
+
+let toastTimer = null;
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ toastEl.classList.remove("show"); }, 1600);
+}
+
+/* 抽屉底部按钮：原型里只做提示，真实 App 弹对应对话框 */
+$("btnNewProject").addEventListener("click", function(){
+  setDrawer(false);
+  toast("新项目 · 6 个模板：Python 空白/交互/多模块/数据处理、Java 单文件/多文件");
+});
+$("btnImport").addEventListener("click", function(){
+  setDrawer(false);
+  toast("导入 · 通过系统文件选择器把手机里的文件复制进项目");
+});
+$("btnExport").addEventListener("click", function(){
+  setDrawer(false);
+  toast("导出 · 把当前文件写到手机任意位置（默认用原文件名）");
+});
+$("btnDiagnostics").addEventListener("click", function(){
+  setDrawer(false);
+  toast("环境自检 · Python pip Java javac Git 逐项探测，显示版本与占用空间");
+});
+$("btnSettings").addEventListener("click", function(){
+  setDrawer(false);
+  toast("设置 · 深色主题 / 自动保存 / 编辑器字号 / 运行超时");
+});
+$("btnAbout").addEventListener("click", function(){
+  setDrawer(false);
+  toast("关于 · 版本 1.0.0 · 开源许可说明");
+});
+
+$("btnClear").addEventListener("click", function(){
+  clearOutput();
+  appendLine("hint", "输出已清空");
+  setBadge("idle", "空闲");
+});
+
+$("btnSave").addEventListener("click", function(){
+  toast("已保存 " + FILES[activeFile].name);
+  appendLine("sys", "[saved] " + FILES[activeFile].name);
+});
+
+/* ==================================================================
+   7. 运行：打字机逐行输出
+   ================================================================== */
+const SECRET = 73;      // 与 Java 版一致，便于演示
+let running = false;
+let session = null;     // 当前会话状态
+let timers = [];
+
+function killTimers(){ timers.forEach(clearTimeout); timers = []; }
+function later(fn, ms){ timers.push(setTimeout(fn, ms)); }
+
+/* 每个文件的运行脚本：steps 逐行打字，endsWithInput 表示会等待 input() */
+const PROGRAMS = {
+  "main.py": {
+    prelude: [
+      { c: "",     t: "我在想一个 1-100 的数字，猜猜看？" },
+      { c: "echo", t: "请输入: ", delay: 900 }
+    ],
+    interactive: true
+  },
+  "java-demo/Main.java": {
+    prelude: [
+      { c: "",     t: "我在想一个 1-100 的数字，猜猜看？" },
+      { c: "echo", t: "请输入: ", delay: 900 }
+    ],
+    interactive: true
+  },
+  "utils.py": {
+    prelude: [
+      { c: "",     t: "[fib] 耗时 0.51 ms" },
+      { c: "",     t: "280571172992510140037611932413038677189525" },
+      { c: "hint", t: "进程已退出（退出码 0）" }
+    ],
+    interactive: false
+  }
+};
+
+function playScript(steps, done){
+  let i = 0;
+  function next(){
+    if (i >= steps.length){ done && done(); return; }
+    const s = steps[i++];
+    appendLine(s.c, s.t);
+    later(next, s.delay != null ? s.delay : 170);
+  }
+  if (steps.length){
+    const first = steps[0];
+    appendLine(first.c, first.t);
+    i = 1;
+    later(next, first.delay != null ? first.delay : 170);
+  } else {
+    done && done();
+  }
+}
+
+/* 重置输入行状态 */
+function lockInput(placeholder){
+  session = null;
+  stdin.value = "";
+  stdin.disabled = true;
+  stdin.placeholder = placeholder || "程序未在等待输入…";
+  btnSend.disabled = true;
+}
+
+function run(){
+  if (running) return;
+  const f = FILES[activeFile];
+  const prog = PROGRAMS[activeFile];
+  if (!prog) return;
+
+  running = true;
+  setRunning(true);
+  setBadge("running", "运行中");
+  clearOutput();
+  killTimers();
+  removePendingCaret();
+  lockInput("正在运行…");
+
+  appendLine("sys", "$ devterminal run " + f.name);
+  appendLine("hint", "正在启动离线解释器…");
+
+  later(function(){
+    clearOutput();
+    playScript(prog.prelude, function(){
+      running = false;
+      setRunning(false);
+
+      if (prog.interactive){
+        setBadge("ok", "成功");
+        session = { secret: SECRET, tries: 0 };
+        stdin.disabled = false;
+        btnSend.disabled = false;
+        stdin.placeholder = "输入 1-100 的数字后回车…";
+        stdin.focus();
+        showPendingCaret();
+      } else {
+        setBadge("ok", "成功");
+        lockInput("程序已结束，再次运行试试…");
+      }
+    });
+  }, 520);
+}
+
+/* 输出区末尾的闪烁光标，模拟等待输入 */
+let pendingCaret = null;
+function showPendingCaret(){
+  removePendingCaret();
+  const span = document.createElement("span");
+  span.className = "l";
+  span.appendChild(document.createTextNode("\u200b"));
+  const cur = document.createElement("span");
+  cur.className = "caret-line";
+  span.appendChild(cur);
+  outBody.appendChild(span);
+  outBody.scrollTop = outBody.scrollHeight;
+  pendingCaret = span;
+}
+function removePendingCaret(){
+  if (pendingCaret && pendingCaret.parentNode){
+    pendingCaret.parentNode.removeChild(pendingCaret);
+  }
+  pendingCaret = null;
+}
+
+btnRun.addEventListener("click", run);
+
+/* ==================================================================
+   8. 交互式输入（模拟 Python input()）
+   ================================================================== */
+function sendInput(){
+  if (!session) return;
+  const raw = stdin.value.trim();
+  if (raw === "") return;
+
+  stdin.value = "";
+  removePendingCaret();
+
+  // 回显「请输入: 你的输入」
+  const last = outBody.lastElementChild;
+  if (last && last.textContent.indexOf("请输入:") === 0){
+    last.textContent = "请输入: " + raw;
+    last.className = "l echo";
+  } else {
+    appendLine("echo", "请输入: " + raw);
+  }
+
+  const n = parseInt(raw, 10);
+  if (isNaN(n) || n < 1 || n > 100){
+    appendLine("warn", "请输入一个 1-100 的整数");
+    setBadge("running", "等待输入");
+    showPendingCaret();
+    stdin.focus();
+    return;
+  }
+
+  const cur = session;
+  cur.tries++;
+
+  later(function(){
+    // 会话可能已被切文件/重新运行重置
+    if (session !== cur) return;
+
+    if (n < cur.secret){
+      appendLine("", "太小了！");
+      setBadge("running", "等待输入");
+      showPendingCaret();
+    } else if (n > cur.secret){
+      appendLine("", "太大了！");
+      setBadge("running", "等待输入");
+      showPendingCaret();
+    } else {
+      appendLine("ok", "猜对了！用了 " + cur.tries + " 次");
+      appendLine("hint", "进程已退出（退出码 0）");
+      setBadge("ok", "成功");
+      lockInput("程序已结束，再次运行试试…");
+    }
+  }, 260);
+}
+
+btnSend.addEventListener("click", sendInput);
+stdin.addEventListener("keydown", function(e){
+  if (e.key === "Enter"){ e.preventDefault(); sendInput(); }
+});
+
+/* ==================================================================
+   9. 分隔条拖动调整输出面板高度
+   ================================================================== */
+(function(){
+  let dragging = false, startY = 0, startH = 0;
+  const bodyEl = document.querySelector(".body");
+
+  splitter.addEventListener("mousedown", function(e){
+    dragging = true;
+    startY = e.clientY;
+    startH = output.offsetHeight;
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  });
+
+  window.addEventListener("mousemove", function(e){
+    if (!dragging) return;
+    const dy = startY - e.clientY;
+    const maxH = bodyEl.clientHeight - 140;
+    let h = startH + dy;
+    h = Math.max(110, Math.min(h, maxH));
+    output.style.height = h + "px";
+  });
+
+  window.addEventListener("mouseup", function(){
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.userSelect = "";
+  });
+})();
+
+/* ==================================================================
+   10. 状态栏时钟
+   ================================================================== */
+(function(){
+  const clock = $("clock");
+  function tick(){
+    const d = new Date();
+    const h = d.getHours(), m = String(d.getMinutes()).padStart(2, "0");
+    clock.textContent = h + ":" + m;
+  }
+  tick();
+  setInterval(tick, 15000);
+})();
+
+/* ==================================================================
+   11. 初始化
+   ================================================================== */
+renderEditor("main.py");
+clearOutput();
+appendLine("hint", "DevTerminal · 离线 Python / Java 运行环境");
+appendLine("hint", "点击右上角「运行」开始，配合下方输入框交互");
+setBadge("idle", "空闲");
+lockInput();
+
+})();
+</script>
+</body>
+</html>
