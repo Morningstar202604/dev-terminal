@@ -328,6 +328,69 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
   transition: background .15s ease;
 }
 .splitter:hover{ background: var(--surface-2); }
+
+/* ============ Tab 条（v0.2 对标 VS Code） ============ */
+.tabbar{
+  flex:0 0 auto; display:flex; gap:2px; align-items:flex-end;
+  background: var(--surface); padding:5px 6px 0;
+  overflow-x:auto; scrollbar-width:none;
+}
+.tabbar::-webkit-scrollbar{ display:none; }
+.tab{
+  flex:0 0 auto; display:flex; align-items:center; gap:6px;
+  padding:7px 10px 6px 12px; border-radius:8px 8px 0 0;
+  font-family: var(--mono); font-size:11.5px; color: var(--text-faint);
+  background: transparent; border:none; cursor:pointer;
+  transition: background .15s ease, color .15s ease;
+  white-space:nowrap;
+}
+.tab:hover{ color: var(--text); background: rgba(255,255,255,.04); }
+.tab.active{
+  background: var(--bg); color: var(--text); font-weight:700;
+  box-shadow: inset 0 2px 0 var(--primary);
+}
+.tab .tab-dot{
+  width:14px; height:14px; border-radius:50%; display:inline-flex;
+  align-items:center; justify-content:center;
+  color: var(--text-faint);
+}
+.tab:hover .tab-dot{ color:#f87171; }
+
+/* ============ 快捷符号栏（v0.2 对标 Pydroid / Spck） ============ */
+.symbar{
+  flex:0 0 auto; display:flex; gap:4px; align-items:center;
+  background: var(--surface-2); padding:4px 6px;
+  overflow-x:auto; scrollbar-width:none;
+  border-top: 1px solid var(--outline-soft);
+}
+.symbar::-webkit-scrollbar{ display:none; }
+.sym{
+  flex:0 0 auto; min-width:32px; height:30px; padding:0 8px;
+  border-radius:6px; border:1px solid var(--outline-soft);
+  background: var(--surface); color: var(--text);
+  font-family: var(--mono); font-size:13.5px; font-weight:600;
+  cursor:pointer; display:inline-flex; align-items:center; justify-content:center;
+  transition: background .12s ease, transform .08s ease;
+}
+.sym:hover{ background: var(--surface-3); }
+.sym:active{ transform: scale(.9); }
+.sym.bold{ font-weight:800; color: var(--accent); }
+
+/* ============ IDE 状态栏（v0.2 对标 VS Code） ============ */
+.ide-status{
+  flex:0 0 auto; display:flex; gap:6px; align-items:center;
+  padding:3px 10px; background: var(--surface);
+  border-top: 1px solid var(--outline-soft);
+  overflow-x:auto; scrollbar-width:none;
+}
+.ide-status::-webkit-scrollbar{ display:none; }
+.ichip{
+  flex:0 0 auto; font-family: var(--mono); font-size:9.5px;
+  color: var(--text-faint); background: rgba(255,255,255,.05);
+  padding:2px 7px; border-radius:5px; white-space:nowrap;
+}
+.ichip.warn{ color:#fbbf24; background: rgba(251,191,36,.12); }
+
 .splitter::after{
   content:""; width:34px; height:3px; border-radius:2px;
   background: var(--outline); transition: background .15s ease;
@@ -594,12 +657,46 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
       </div>
     </aside>
 
+    <!-- Tab 条：多文件切换（v0.2） -->
+    <div class="tabbar" id="tabbar">
+      <button class="tab active" data-tab="main.py">
+        main.py<span class="tab-dot"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></span>
+      </button>
+      <button class="tab" data-tab="utils.py">
+        utils.py<span class="tab-dot"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></span>
+      </button>
+      <button class="tab" data-tab="java-demo/Main.java">
+        Main.java<span class="tab-dot"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></span>
+      </button>
+    </div>
+
     <!-- 编辑器 -->
     <div class="editor">
       <div class="gutter" id="gutter"></div>
       <div class="code-wrap" id="codeWrap">
         <pre class="code" id="code"></pre>
       </div>
+    </div>
+
+    <!-- 快捷符号栏：点一下直接插入（v0.2） -->
+    <div class="symbar" id="symbar">
+      <button class="sym bold" data-sym="⇥" title="Tab 缩进">⇥</button>
+      <button class="sym" data-sym="(">(</button>
+      <button class="sym" data-sym=")">)</button>
+      <button class="sym" data-sym="[">[</button>
+      <button class="sym" data-sym="=">=</button>
+      <button class="sym" data-sym=":">:</button>
+      <button class="sym" data-sym=";">;</button>
+      <button class="sym" data-sym='"'>"</button>
+      <button class="sym" data-sym="'">'</button>
+      <button class="sym" data-sym="<">&lt;</button>
+      <button class="sym" data-sym=">">&gt;</button>
+      <button class="sym" data-sym="+">+</button>
+      <button class="sym" data-sym="-">-</button>
+      <button class="sym" data-sym="%">%</button>
+      <button class="sym" data-sym="_">_</button>
+      <button class="sym" data-sym="#">#</button>
+      <button class="sym bold" data-sym="⌫" title="退格">⌫</button>
     </div>
 
     <!-- 分隔条 -->
@@ -631,6 +728,16 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
         </button>
       </div>
     </section>
+
+    <!-- IDE 状态栏：光标 / 语言 / 字符数 / 保存状态（v0.2） -->
+    <div class="ide-status">
+      <span class="ichip" id="stCursor">Ln 1, Col 1</span>
+      <span class="ichip" id="stLang">Python</span>
+      <span class="ichip" id="stChars">0 字符</span>
+      <span class="ichip" id="stSave">已保存</span>
+      <span class="spacer"></span>
+      <span class="ichip">UTF-8</span>
+    </div>
   </div>
 
   <div class="navbar"><i></i></div>
@@ -886,6 +993,17 @@ function renderEditor(key){
   fileLabel.textContent = f.name;
   codeWrap.scrollTop = 0;
 
+  // Tab 条选中态 + 状态栏（v0.2）
+  document.querySelectorAll(".tab").forEach(function(t){
+    t.classList.toggle("active", t.dataset.tab === key);
+  });
+  const stLang = document.getElementById("stLang");
+  if (stLang) stLang.textContent = f.lang === "python" ? "Python" : "Java";
+  const stChars = document.getElementById("stChars");
+  if (stChars) stChars.textContent = f.code.length + " 字符";
+  const stSave = document.getElementById("stSave");
+  if (stSave){ stSave.textContent = "已保存"; stSave.classList.remove("warn"); }
+
   // 抽屉里的选中态
   document.querySelectorAll(".row[data-file]").forEach(function(r){
     r.classList.toggle("active", r.dataset.file === key);
@@ -989,7 +1107,39 @@ $("btnSettings").addEventListener("click", function(){
 });
 $("btnAbout").addEventListener("click", function(){
   setDrawer(false);
-  toast("关于 · 版本 1.0.0 · 开源许可说明");
+  toast("关于 · 版本 0.2.0 · 开源许可说明");
+});
+
+/* Tab 条：一键切换文件，不用再走抽屉（v0.2） */
+document.querySelectorAll(".tab").forEach(function(t){
+  t.addEventListener("click", function(){
+    const key = t.dataset.tab;
+    if (key === activeFile) return;
+    renderEditor(key);
+    clearOutput();
+    appendLine("sys", "已切换到 " + FILES[key].name + " —— 点击「运行」执行");
+    setBadge("idle", "空闲");
+    setRunning(false);
+    killTimers();
+    removePendingCaret();
+  });
+});
+
+/* 快捷符号栏（v0.2）：输入行聚焦或运行中时直接可用，平时演示插入 */
+document.querySelectorAll(".sym").forEach(function(b){
+  b.addEventListener("click", function(){
+    const s = b.dataset.sym;
+    const input = document.getElementById("stdin");
+    const editing = running || document.activeElement === input;
+    if (editing && input){
+      if (s === "⇥"){ input.value += "    "; }
+      else if (s === "⌫"){ input.value = input.value.slice(0, -1); }
+      else { input.value += s; }
+      input.focus();
+    } else {
+      toast(s === "⇥" ? "插入 Tab 缩进" : (s === "⌫" ? "退格删除" : "在光标处插入 " + s));
+    }
+  });
 });
 
 $("btnClear").addEventListener("click", function(){
@@ -1001,6 +1151,8 @@ $("btnClear").addEventListener("click", function(){
 $("btnSave").addEventListener("click", function(){
   toast("已保存 " + FILES[activeFile].name);
   appendLine("sys", "[saved] " + FILES[activeFile].name);
+  const stSave = document.getElementById("stSave");
+  if (stSave){ stSave.textContent = "已保存"; stSave.classList.remove("warn"); }
 });
 
 /* ==================================================================

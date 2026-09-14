@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
@@ -64,6 +66,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -146,13 +149,22 @@ fun EditorScreen(vm: EditorViewModel) {
         drawerContent = {
             ModalDrawerSheet(Modifier.width(280.dp)) {
                 Column(Modifier.fillMaxHeight()) {
-                    Text(
-                        "DevTerminal",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(16.dp)
-                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "DevTerminal",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = { vm.showFind(true) }) {
+                            Icon(Icons.Filled.Search, "在项目中查找",
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                        }
+                    }
                     Divider()
                     FileTree(
                         root = ui.tree,
@@ -250,6 +262,10 @@ fun EditorScreen(vm: EditorViewModel) {
                         }
                     },
                     actions = {
+                        IconButton(onClick = { vm.showFind(true) }) {
+                            Icon(Icons.Filled.Search, "查找 / 替换",
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                        }
                         IconButton(onClick = { showRunConfig = true }) {
                             Icon(Icons.Filled.Tune, "运行配置",
                                 tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
@@ -281,6 +297,10 @@ fun EditorScreen(vm: EditorViewModel) {
             },
             snackbarHost = { SnackbarHost(snackbar) }
         ) { padding ->
+            // 输出面板高度：初始值来自设置，拖拽即时调整，松手才落盘
+            var outputHeight by remember(ui.settings.outputHeightDp) {
+                mutableStateOf(ui.settings.outputHeightDp.toFloat())
+            }
             Column(Modifier.padding(padding).fillMaxSize()) {
                 if (ui.envState == EnvState.ERROR) {
                     Box(
@@ -292,6 +312,30 @@ fun EditorScreen(vm: EditorViewModel) {
                             color = MaterialTheme.colorScheme.error)
                     }
                 }
+                // 多文件 Tab 条（对标 VS Code / Acode）
+                FileTabs(
+                    tabs = ui.openTabs,
+                    activePath = ui.currentFile?.absolutePath,
+                    onSelect = { vm.openFile(it) },
+                    onClose = { vm.closeTab(it) }
+                )
+                // 查找 / 替换条
+                if (ui.findVisible) {
+                    FindBar(
+                        query = ui.findQuery,
+                        replaceWith = ui.findReplaceWith,
+                        matchInfo = vm.findMatchInfo(ui),
+                        replaceMode = ui.findReplaceMode,
+                        onQueryChange = vm::onFindQueryChanged,
+                        onReplaceChange = vm::onFindReplaceChanged,
+                        onNext = vm::findNext,
+                        onPrev = vm::findPrev,
+                        onReplaceOne = vm::replaceOne,
+                        onReplaceAll = vm::replaceAll,
+                        onToggleReplaceMode = vm::toggleFindReplaceMode,
+                        onDismiss = { vm.showFind(false) }
+                    )
+                }
                 CodeEditorView(
                     file = ui.currentFile,
                     text = ui.editorText,
@@ -300,9 +344,45 @@ fun EditorScreen(vm: EditorViewModel) {
                     language = if (ui.currentFile?.extension == "java")
                         com.devterminal.engine.Language.JAVA
                     else com.devterminal.engine.Language.PYTHON,
+                    onCursorChange = vm::onCursorChanged,
+                    insertSignal = ui.insertSignal,
+                    insertText = ui.insertText,
+                    backspaceSignal = ui.backspaceSignal,
+                    findRequest = if (ui.findVisible && ui.findMatches.isNotEmpty()) FindRequest(
+                        pos = ui.findMatches.getOrNull(ui.findIndex) ?: 0,
+                        length = ui.findQuery.length,
+                        requestId = ui.findRequestId
+                    ) else null,
                     modifier = Modifier.fillMaxWidth().weight(1f)
                 )
+                // 快捷符号栏：手机键盘打符号太费劲
+                SymbolBar(
+                    onInsert = { vm.insertSymbol(it) },
+                    onBackspace = { vm.backspaceSymbol() }
+                )
                 Divider()
+                // 拖拽把手：上下拖调整输出面板高度
+                Box(
+                    Modifier.fillMaxWidth().height(16.dp)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .pointerInput(Unit) {
+                            detectVerticalDragGestures(
+                                onDragEnd = { vm.persistOutputHeight(outputHeight.roundToInt()) }
+                            ) { _, dragAmount ->
+                                outputHeight = (outputHeight + dragAmount)
+                                    .coerceIn(120f, 560f)
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        Modifier.width(36.dp).height(4.dp)
+                            .background(
+                                MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                androidx.compose.foundation.shape.RoundedCornerShape(2.dp)
+                            )
+                    )
+                }
                 OutputPanel(
                     output = ui.output,
                     running = ui.running,
@@ -313,7 +393,15 @@ fun EditorScreen(vm: EditorViewModel) {
                     onInputSend = { vm.sendInput(ui.inputDraft) },
                     onClear = vm::clearOutput,
                     onRerun = vm::runCurrent,
-                    modifier = Modifier.fillMaxWidth().height(260.dp)
+                    modifier = Modifier.fillMaxWidth().height(outputHeight.dp)
+                )
+                // 底部状态栏：光标位置 / 语言 / 保存状态
+                StatusBar(
+                    line = ui.cursorLine,
+                    column = ui.cursorColumn,
+                    language = if (ui.currentFile?.extension == "java") "Java" else "Python",
+                    charCount = ui.editorText.length,
+                    dirty = ui.dirty
                 )
             }
         }

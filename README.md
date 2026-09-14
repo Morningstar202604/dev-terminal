@@ -13,12 +13,18 @@
 
 ## 与市面方案的区别
 
-| | Termux | Pydroid 3 | AidLux | **DevTerminal** |
+| | Termux | Pydroid 3 | Acode | **DevTerminal** |
 |---|---|---|---|---|
-| 界面 | 纯命令行 | 仅 Python，较旧 | 桌面环境，需联网初始化 | **现代 IDE：文件树+编辑器+输出** |
-| 多语言 | ✅ | ❌ | ✅ | ✅（Python 首版，Java 跟进） |
-| 完全离线 | ❌ 装包要联网 | 部分 | ❌ | ✅ **零网络，工具链内置** |
-| 开源 | ✅ | ❌ | ❌ | ✅ |
+| 界面 | 纯命令行 | 仅 Python，较旧 | 通用但广告多 | **现代 IDE：Tab 页+文件树+编辑器+输出** |
+| 多语言 | ✅ | ❌ | ✅ | ✅（Python + Java） |
+| 符号快捷键 | ❌ | ✅ | ✅ | ✅ **26 键编程符号栏** |
+| 查找/替换 | 手动 grep | ✅ | ✅ | ✅ 计数跳转 + 一键全部替换 |
+| 完全离线 | ❌ 装包要联网 | 部分 | 部分 | ✅ **零网络，工具链内置** |
+| 开源 | ✅ | ❌ | ✅ | ✅ Apache-2.0 |
+
+> **v0.2 对标升级**：UX 对齐 2026 年移动编程工具第一梯队（Pydroid 3 的扩展键盘、
+> Spck 的 on-screen coding keys、Acode 的多 Tab 与查找替换、VS Code 的状态栏与会话恢复），
+> 每一项都是为「手机上真的写代码」设计的，不是桌面功能的照搬。
 
 ## 架构
 
@@ -55,9 +61,13 @@ dev-terminal/
 │   │   └── Templates.kt               6 个项目模板
 │   └── ui/
 │       ├── EditorScreen.kt            主界面 Scaffold + 各对话框
-│       ├── EditorViewModel.kt         状态管理
-│       ├── CodeEditorView.kt          SoraEditor 桥接
+│       ├── EditorViewModel.kt         状态管理（Tab/查找/会话恢复）
+│       ├── CodeEditorView.kt          SoraEditor 桥接（光标/插入/查找跳转）
 │       ├── StaticCompletionLanguage.kt 补全语言包装器（委托高亮 + 静态补全）
+│       ├── FileTabs.kt                顶部多文件 Tab 条（v0.2）
+│       ├── SymbolBar.kt               快捷符号栏（v0.2）
+│       ├── FindBar.kt                 查找 / 替换条（v0.2）
+│       ├── StatusBar.kt               底部状态栏（v0.2）
 │       ├── FileTree.kt                文件树（长按操作）
 │       ├── OutputPanel.kt             输出面板 + 交互输入行
 │       └── theme/Theme.kt             Material 3 主题
@@ -177,7 +187,41 @@ python3 tools/selfcheck.py
 
 无 Android SDK 时也能跑，检查：花括号配平（正确处理字符串模板）、
 Compose 图标 import 完整性、package 与目录一致性、未使用的 import。
-当前状态：**20 个文件，0 错误 0 警告**。
+当前状态：**24 个文件，0 错误 0 警告**。
+
+### 14. 多文件 Tab 条（v0.2）
+
+顶栏下方一排 Tab，点一下切文件，× 关闭——不用再走抽屉。
+对标 VS Code / Acode。关闭当前 Tab 自动切到相邻文件。
+
+### 15. 快捷符号栏（v0.2）
+
+编辑器下方固定一排编程高频符号：
+`⇥ ( ) [ ] { } : ; " ' = < > + - * / % _ # & | ! . , $ \` + 退格。
+
+横向滚动，点击直接插入光标处（走编辑器撤销栈，可 Ctrl-Z 回退）。
+灵感来自 Pydroid 3 的扩展键盘与 Spck 的 on-screen coding keys——
+**手机键盘打符号要切两三层键盘，这是移动编程第一痛点**。
+
+### 16. 查找 / 替换（v0.2）
+
+顶栏 🔍 唤出：实时匹配计数（`2/5`）、上一个/下一个跳转（编辑器自动滚动定位）、
+展开后支持单个替换与全部替换。对标 Acode 的 Search & Replace。
+
+### 17. 会话恢复（v0.2）
+
+杀掉 App 再打开，自动回到上次的现场：上次项目、打开的 Tab 列表、
+正在编辑的文件。不再每次启动都回到默认项目。
+
+### 18. 输出面板拖拽调高（v0.2）
+
+输出面板上沿的把手可以上下拖（120–560dp），看完长报错不用再进输出区滚动；
+松手后高度记忆在设置里，重启保留。
+
+### 19. 底部状态栏（v0.2）
+
+`Ln 12, Col 8 · Python · 452 字符 · ● 未保存`——VS Code 的标配信息条，
+随时知道光标在哪、文件脏不脏。
 
 ## UI 原型
 
@@ -249,6 +293,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 | M7 | SAF 导入 / 导出 | ✅ |
 | M8 | 设置页 + 主题切换 | ✅ |
 | M9 | 静态代码补全 + 崩溃日志 + 自检脚本 | ✅ |
+| M10 | 体验对标版：Tab 页 / 符号栏 / 查找替换 / 状态栏 / 会话恢复 / 输出拖高 | ✅ |
 
 ## 已知限制
 

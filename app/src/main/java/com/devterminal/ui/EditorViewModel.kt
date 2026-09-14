@@ -50,7 +50,29 @@ data class UiState(
     /** 运行配置：Java 主类全限定名（留空=自动探测） */
     val mainClass: String = "",
     /** 用户设置 */
-    val settings: com.devterminal.settings.AppSettings = com.devterminal.settings.AppSettings()
+    val settings: com.devterminal.settings.AppSettings = com.devterminal.settings.AppSettings(),
+    /** 顶部打开的文件 Tab 列表 */
+    val openTabs: List<File> = emptyList(),
+    // ---------- 查找 / 替换 ----------
+    val findVisible: Boolean = false,
+    val findQuery: String = "",
+    val findReplaceWith: String = "",
+    val findReplaceMode: Boolean = false,
+    /** 所有匹配的全局字符偏移 */
+    val findMatches: List<Int> = emptyList(),
+    /** 当前停在的匹配序号（findMatches 下标） */
+    val findIndex: Int = 0,
+    /** 跳转请求序号，每次自增触发编辑器执行 */
+    val findRequestId: Long = 0,
+    // ---------- 状态栏 ----------
+    val cursorLine: Int = 1,
+    val cursorColumn: Int = 1,
+    // ---------- 符号栏 ----------
+    /** 每次自增插入一次 insertText */
+    val insertSignal: Long = 0,
+    val insertText: String? = null,
+    /** 每次自增退格一次 */
+    val backspaceSignal: Long = 0
 )
 
 class EditorViewModel(app: Application) : AndroidViewModel(app) {
@@ -101,7 +123,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                     installProgress = -1f,
                     output = listOf("[DevTerminal] 离线运行环境已就绪，全程无需联网。")
                 )
-                loadDefaultProject()
+                restoreSession()
                 // 后台跑一次自检，不阻塞用户开始写代码
                 runDiagnostics()
             } else {
@@ -137,20 +159,53 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun loadDefaultProject() {
+    // ---------- 会话恢复：重启后回到上次的编辑现场 ----------
+
+    /**
+     * 恢复上次会话：上次项目 → 上次打开的 Tab 列表 → 上次激活的文件。
+     * 全部失效时回退到默认项目（首个项目或新建模板项目）。
+     */
+    private fun restoreSession() {
         viewModelScope.launch {
-            val project = withContext(Dispatchers.IO) {
+            val snap = settingsStore.loadSession()
+            val defaultProject = withContext(Dispatchers.IO) {
                 projects.ensureInitialized()
                 projects.listProjects().firstOrNull()
                     ?: projects.createFromTemplate(Templates.PYTHON_HELLO)
             }
-            openProject(project)
+            val projectDir = snap.projectPath?.let { File(it) }
+                ?.takeIf { it.isDirectory && it.parentFile == projects.root }
+                ?: defaultProject
+            currentProject = projectDir
+            refreshTree()
+
+            // 恢复 Tab 列表（剔除已不存在的文件）
+            val tabs = snap.tabPaths.map { File(it) }.filter { it.isFile }
+            val active = snap.filePath?.let { File(it) }?.takeIf { it.isFile && tabs.contains(it) }
+                ?: tabs.firstOrNull()
+            _ui.value = _ui.value.copy(openTabs = tabs)
+            if (active != null) {
+                doOpenFile(active, restore = true)
+            }
         }
     }
+
+    /** 把当前编辑现场写进偏好，App 被杀后也能回来 */
+    private fun saveSession() {
+        val st = _ui.value
+        settingsStore.saveSession(
+            projectPath = currentProject?.absolutePath,
+            filePath = st.currentFile?.absolutePath,
+            tabPaths = st.openTabs.map { it.absolutePath }
+        )
+    }
+
+    // ---------- 项目 / 文件 ----------
 
     fun openProject(dir: File) {
         currentProject = dir
         refreshTree()
+        saveSession()
     }
 
     private fun refreshTree() {
@@ -169,7 +224,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         if (st.settings.autoSave && st.dirty && st.currentFile != null) {
             viewModelScope.launch {
                 withContext(Dispatchers.IO) {
-                    projects.write(st.currentFile.absolutePath, st.editorText)
+                    projects.write(st.currentFile!!.absolutePath, st.editorText)
                 }
                 doOpenFile(file)
             }
@@ -178,10 +233,41 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun doOpenFile(file: File) {
+    private fun doOpenFile(file: File, restore: Boolean = false) {
         viewModelScope.launch {
             val content = withContext(Dispatchers.IO) { projects.read(file.absolutePath) }
-            _ui.value = _ui.value.copy(currentFile = file, editorText = content, dirty = false)
+            _ui.value = _ui.value.copy(
+                currentFile = file,
+                editorText = content,
+                dirty = false,
+                // 打开新文件自动挂到 Tab 条上（已打开的不重复加）
+                openTabs = _ui.value.openTabs.let { tabs ->
+                    if (tabs.any { it.absolutePath == file.absolutePath }) tabs else tabs + file
+                }
+            )
+            if (!restore) saveSession()
+        }
+    }
+
+    /** 关闭一个 Tab；若关的是当前文件则自动切到相邻 Tab */
+    fun closeTab(file: File) {
+        val st = _ui.value
+        val idx = st.openTabs.indexOfFirst { it.absolutePath == file.absolutePath }
+        if (idx < 0) return
+        val newTabs = st.openTabs.filterNot { it.absolutePath == file.absolutePath }
+        if (st.currentFile?.absolutePath == file.absolutePath) {
+            // 保存后切到相邻 Tab（优先右边，其次左边），没有就清空编辑器
+            val next = newTabs.getOrNull(idx) ?: newTabs.getOrNull(idx - 1)
+            _ui.value = st.copy(openTabs = newTabs)
+            if (next != null) {
+                doOpenFile(next)
+            } else {
+                _ui.value = _ui.value.copy(currentFile = null, editorText = "", dirty = false)
+                saveSession()
+            }
+        } else {
+            _ui.value = st.copy(openTabs = newTabs)
+            saveSession()
         }
     }
 
@@ -199,6 +285,8 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             _ui.value = st.copy(dirty = false, message = "已保存 ${file.name}")
         }
     }
+
+    // ---------- 运行 ----------
 
     fun runCurrent() {
         val st = _ui.value
@@ -346,7 +434,15 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val dir = withContext(Dispatchers.IO) { projects.createFromTemplate(tpl) }
             openProject(dir)
-            _ui.value = _ui.value.copy(message = "已创建项目 ${dir.name}")
+            _ui.value = _ui.value.copy(
+                openTabs = emptyList(),
+                message = "已创建项目 ${dir.name}"
+            )
+            // 新项目自动打开主文件
+            val main = withContext(Dispatchers.IO) {
+                dir.walkTopDown().filter { it.isFile && it.extension in listOf("py", "java") }.firstOrNull()
+            }
+            if (main != null) doOpenFile(main)
         }
     }
 
@@ -362,10 +458,16 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteFile(file: File) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { projects.delete(file) }
-            if (_ui.value.currentFile?.path == file.path) {
-                _ui.value = _ui.value.copy(currentFile = null, editorText = "")
+            val st = _ui.value
+            if (st.currentFile?.path == file.path) {
+                _ui.value = st.copy(currentFile = null, editorText = "")
             }
+            // 从 Tab 条同步移除
+            _ui.value = _ui.value.copy(
+                openTabs = _ui.value.openTabs.filterNot { it.absolutePath == file.absolutePath }
+            )
             refreshTree()
+            saveSession()
             _ui.value = _ui.value.copy(message = "已删除 ${file.name}")
         }
     }
@@ -376,10 +478,18 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             if (renamed == null) {
                 _ui.value = _ui.value.copy(message = "重命名失败：名称已存在或非法")
             } else {
-                if (_ui.value.currentFile?.path == file.path) {
-                    openFile(renamed)
+                val st = _ui.value
+                if (st.currentFile?.path == file.path) {
+                    doOpenFile(renamed)
                 }
+                // 同步 Tab 列表里的旧路径
+                _ui.value = _ui.value.copy(
+                    openTabs = _ui.value.openTabs.map {
+                        if (it.absolutePath == file.absolutePath) renamed else it
+                    }
+                )
                 refreshTree()
+                saveSession()
                 _ui.value = _ui.value.copy(message = "已重命名为 ${renamed.name}")
             }
         }
@@ -393,6 +503,117 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun updateSettings(newSettings: com.devterminal.settings.AppSettings) {
         settingsStore.save(newSettings)
         _ui.value = _ui.value.copy(settings = newSettings)
+    }
+
+    /** 拖拽结束后记录输出面板高度（拖动过程走 UI 本地状态，结束才落盘） */
+    fun persistOutputHeight(dp: Int) {
+        val s = _ui.value.settings
+        if (s.outputHeightDp != dp) updateSettings(s.copy(outputHeightDp = dp))
+    }
+
+    // ---------- 状态栏 ----------
+
+    /** 编辑器光标变化（行、列，从 0 计） */
+    fun onCursorChanged(line: Int, column: Int) {
+        _ui.value = _ui.value.copy(cursorLine = line + 1, cursorColumn = column + 1)
+    }
+
+    // ---------- 符号栏 ----------
+
+    /** 在光标处插入一段文本（符号 / Tab） */
+    fun insertSymbol(text: String) {
+        val st = _ui.value
+        _ui.value = st.copy(insertSignal = st.insertSignal + 1, insertText = text)
+    }
+
+    /** 光标处退格 */
+    fun backspaceSymbol() {
+        val st = _ui.value
+        _ui.value = st.copy(backspaceSignal = st.backspaceSignal + 1)
+    }
+
+    // ---------- 查找 / 替换 ----------
+
+    fun showFind(show: Boolean) {
+        _ui.value = _ui.value.copy(findVisible = show)
+        if (!show) {
+            _ui.value = _ui.value.copy(
+                findVisible = false, findMatches = emptyList(), findIndex = 0, findQuery = ""
+            )
+        }
+    }
+
+    fun onFindQueryChanged(query: String) {
+        val st = _ui.value
+        val matches = computeMatches(st.editorText, query)
+        _ui.value = st.copy(
+            findQuery = query,
+            findMatches = matches,
+            findIndex = 0,
+            findRequestId = if (matches.isNotEmpty()) st.findRequestId + 1 else st.findRequestId
+        )
+    }
+
+    fun onFindReplaceChanged(text: String) {
+        _ui.value = _ui.value.copy(findReplaceWith = text)
+    }
+
+    fun toggleFindReplaceMode() {
+        _ui.value = _ui.value.copy(findReplaceMode = !_ui.value.findReplaceMode)
+    }
+
+    fun findNext() = stepFind(1)
+    fun findPrev() = stepFind(-1)
+
+    private fun stepFind(delta: Int) {
+        val st = _ui.value
+        if (st.findMatches.isEmpty()) return
+        val idx = ((st.findIndex + delta) % st.findMatches.size + st.findMatches.size) % st.findMatches.size
+        _ui.value = st.copy(findIndex = idx, findRequestId = st.findRequestId + 1)
+    }
+
+    fun replaceOne() {
+        val st = _ui.value
+        val content = st.editorText
+        val pos = st.findMatches.getOrNull(st.findIndex) ?: return
+        val end = pos + st.findQuery.length
+        if (end > content.length) return
+        val newText = content.substring(0, pos) + st.findReplaceWith + content.substring(end)
+        val matches = computeMatches(newText, st.findQuery)
+        _ui.value = st.copy(
+            editorText = newText,
+            dirty = true,
+            findMatches = matches,
+            findIndex = if (matches.isEmpty()) 0 else (st.findIndex % matches.size)
+        )
+    }
+
+    fun replaceAll() {
+        val st = _ui.value
+        if (st.findQuery.isEmpty()) return
+        val newText = st.editorText.replace(st.findQuery, st.findReplaceWith)
+        _ui.value = st.copy(
+            editorText = newText,
+            dirty = true,
+            findMatches = computeMatches(newText, st.findQuery),
+            findIndex = 0
+        )
+    }
+
+    /** 当前查找状态的匹配信息，如「2/5」；无可匹配时为 null */
+    fun findMatchInfo(st: UiState): String? =
+        if (st.findMatches.isEmpty()) null
+        else "${st.findIndex + 1}/${st.findMatches.size}"
+
+    private fun computeMatches(content: String, query: String): List<Int> {
+        if (query.isEmpty() || content.isEmpty()) return emptyList()
+        val result = mutableListOf<Int>()
+        var idx = content.indexOf(query)
+        while (idx >= 0 && result.size < 500) {
+            result.add(idx)
+            idx = content.indexOf(query, idx + query.length)
+        }
+        return result
     }
 
     // ---------- 导入 / 导出（SAF） ----------

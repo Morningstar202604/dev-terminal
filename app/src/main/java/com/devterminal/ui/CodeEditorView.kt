@@ -1,10 +1,12 @@
 package com.devterminal.ui
 
+import android.view.KeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -13,6 +15,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.viewinterop.AndroidView
 import com.devterminal.engine.Language as DevLanguage
 import io.github.rosemoe.sora.event.ContentChangeEvent
+import io.github.rosemoe.sora.event.SelectionChangeEvent
 import io.github.rosemoe.sora.langs.textmate.TextMateColorScheme
 import io.github.rosemoe.sora.langs.textmate.TextMateLanguage
 import io.github.rosemoe.sora.langs.textmate.registry.GrammarRegistry
@@ -31,6 +34,12 @@ import java.io.File
  *
  * 补全实现要点：sora-editor 的补全由 **Language** 提供，
  * 因此用 [StaticCompletionLanguage] 包一层 TextMate 语言（保留高亮 + 静态补全）。
+ *
+ * v0.2 新增：
+ * - [onCursorChange] 光标行列回调（供状态栏显示）
+ * - [insertSignal]/[insertText] 符号栏插入（走 Content.insert，进撤销栈）
+ * - [backspaceSignal] 符号栏退格（模拟 KEYCODE_DEL，兼容 IME）
+ * - [findRequest] 查找跳转（setSelection + ensureSelectionVisible）
  */
 @Composable
 fun CodeEditorView(
@@ -40,7 +49,15 @@ fun CodeEditorView(
     modifier: Modifier = Modifier,
     readOnly: Boolean = false,
     fontSize: Int = 14,
-    language: DevLanguage = DevLanguage.PYTHON
+    language: DevLanguage = DevLanguage.PYTHON,
+    onCursorChange: (Int, Int) -> Unit = { _, _ -> },
+    /** 每次自增触发一次插入，insertText 为要插入的内容 */
+    insertSignal: Long = 0,
+    insertText: String? = null,
+    /** 每次自增触发一次退格 */
+    backspaceSignal: Long = 0,
+    /** 查找跳转请求：pos 为全局字符偏移，requestId 变化即执行 */
+    findRequest: FindRequest? = null
 ) {
     val context = LocalContext.current
 
@@ -63,6 +80,41 @@ fun CodeEditorView(
     remember { initTextMate(context.assets) }
     // 让补全能读到当前文档；用可变引用避免闭包捕获旧值
     val docRef = remember { java.util.concurrent.atomic.AtomicReference(text) }
+    val cursorCallback = remember { onCursorChange }
+
+    // 符号栏插入：直接走编辑器内部 Content.insert，能正确进撤销栈
+    LaunchedEffect(insertSignal) {
+        if (insertSignal <= 0) return@LaunchedEffect
+        val toInsert = insertText ?: return@LaunchedEffect
+        runCatching {
+            val cursor = editor.cursor
+            editor.text.insert(cursor.leftLine, cursor.leftColumn, toInsert)
+        }
+    }
+
+    // 符号栏退格：模拟删除键事件，编辑器自己处理选中/删除逻辑
+    LaunchedEffect(backspaceSignal) {
+        if (backspaceSignal <= 0) return@LaunchedEffect
+        runCatching {
+            editor.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
+        }
+    }
+
+    // 查找跳转：把全局偏移换算成行列后移动光标并滚动到可见
+    LaunchedEffect(findRequest?.requestId) {
+        val req = findRequest ?: return@LaunchedEffect
+        runCatching {
+            val content = editor.text?.toString() ?: return@LaunchedEffect
+            val pos = req.pos.coerceIn(0, content.length)
+            val line = content.substring(0, pos).count { it == '\n' }
+            val col = if (line == 0) pos
+                      else pos - (content.lastIndexOf('\n', pos - 1) + 1)
+            runCatching { editor.setSelection(line, col) }
+            runCatching {
+                editor.ensureSelectionVisible()
+            }
+        }
+    }
 
     AndroidView(
         modifier = modifier,
@@ -97,6 +149,18 @@ fun CodeEditorView(
                         val current = editor.text?.toString() ?: return
                         docRef.set(current)
                         onTextChange(current)
+                    }
+                })
+
+                // 光标/选区变化 → 状态栏的行列显示
+                subscribeEvent(object : SelectionChangeEvent.Subscriber() {
+                    override fun onEvent(
+                        event: SelectionChangeEvent,
+                        dispatcher: io.github.rosemoe.sora.event.EventDispatcher
+                    ) {
+                        val line = runCatching { event.leftLine }.getOrDefault(0)
+                        val column = runCatching { event.leftColumn }.getOrDefault(0)
+                        cursorCallback(line, column)
                     }
                 })
             }
