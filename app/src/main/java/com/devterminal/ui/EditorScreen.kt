@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.devterminal.BuildConfig
 import com.devterminal.project.Templates
 import java.io.File
 import kotlinx.coroutines.launch
@@ -751,7 +752,7 @@ private fun AboutDialog(onDismiss: () -> Unit) {
         title = { Text("关于 DevTerminal") },
         text = {
             Column {
-                Text("版本 1.0.0", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text("版本 ${BuildConfig.VERSION_NAME}", fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 Spacer(Modifier.height(8.dp))
                 Text(
                     "完全离线的安卓编程终端。内置 Python / Java 工具链，" +
