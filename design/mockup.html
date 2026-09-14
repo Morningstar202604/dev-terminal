@@ -391,6 +391,100 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
 }
 .ichip.warn{ color:#fbbf24; background: rgba(251,191,36,.12); }
 
+/* ============ v0.3 覆盖面板（命令面板 / Git / AI / 全局搜索） ============ */
+.sheet{
+  position:absolute; inset:0; z-index:60;
+  background: rgba(3,7,18,.72); backdrop-filter: blur(3px);
+  display:none; align-items:flex-start; justify-content:center;
+  padding: 64px 16px 24px;
+}
+.sheet.open{ display:flex; }
+.sheet-box{
+  width:100%; max-width:360px; max-height:78%;
+  display:flex; flex-direction:column;
+  background: var(--surface); border:1px solid var(--outline);
+  border-radius:14px; overflow:hidden;
+  box-shadow: 0 20px 50px rgba(0,0,0,.55);
+}
+.sheet-input{
+  flex:0 0 auto; width:100%; padding:13px 14px;
+  background: var(--surface-2); border:none; border-bottom:1px solid var(--outline-soft);
+  outline:none; color:var(--text); font-family:var(--mono); font-size:13px;
+}
+.sheet-input::placeholder{ color:var(--text-faint); }
+.sheet-body{ flex:1 1 auto; overflow-y:auto; padding:6px; }
+.sheet-body::-webkit-scrollbar{ width:6px; }
+.sheet-body::-webkit-scrollbar-thumb{ background:var(--surface-3); border-radius:3px; }
+.cmd-row{
+  display:flex; align-items:center; gap:11px; padding:9px 10px;
+  border-radius:8px; cursor:pointer;
+}
+.cmd-row:hover{ background: rgba(99,102,241,.12); }
+.cmd-row .cico{
+  width:26px; height:26px; border-radius:7px; flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center;
+  background: rgba(99,102,241,.14); color:var(--accent);
+}
+.cmd-row .cico svg{ width:14px; height:14px; }
+.cmd-row .ct{ font-size:12.5px; color:var(--text); font-weight:600; }
+.cmd-row .cs{ font-size:10.5px; color:var(--text-faint); margin-top:1px; }
+.sheet-head{
+  flex:0 0 auto; display:flex; align-items:center; gap:8px;
+  padding:11px 14px; border-bottom:1px solid var(--outline-soft);
+}
+.sheet-head .sh-t{ font-size:13.5px; font-weight:700; color:var(--text); }
+.sheet-close{
+  margin-left:auto; border:none; background:none; color:var(--text-faint);
+  cursor:pointer; font-size:16px; padding:2px 6px; border-radius:6px;
+}
+.sheet-close:hover{ color:var(--text); background:var(--surface-3); }
+/* Git 面板 */
+.git-branch{ font-family:var(--mono); font-size:11px; color:var(--accent);
+  background:rgba(99,102,241,.12); padding:2px 8px; border-radius:6px; }
+.git-file{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); padding:3px 10px; }
+.git-file b{ color:#fbbf24; font-weight:600; margin-right:8px; }
+.git-msg{
+  width:100%; padding:9px 12px; margin:8px 0 6px;
+  background:var(--surface-2); border:1px solid var(--outline); border-radius:8px;
+  outline:none; color:var(--text); font-size:12px;
+}
+.btn-primary{
+  width:100%; padding:9px; border:none; border-radius:8px; cursor:pointer;
+  background:var(--primary); color:#fff; font-size:12.5px; font-weight:700;
+}
+.btn-primary:hover{ background:#7276f5; }
+.btn-ghost{
+  flex:1; padding:8px 4px; border:1px solid var(--outline); border-radius:8px;
+  background:transparent; color:var(--text); font-size:11.5px; cursor:pointer;
+}
+.btn-ghost:hover{ background:var(--surface-3); }
+/* AI 面板 */
+.ai-msgs{ flex:1 1 auto; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:8px; }
+.bubble{
+  max-width:82%; padding:8px 11px; border-radius:12px; font-size:11.5px; line-height:1.55;
+}
+.bubble.user{ align-self:flex-end; background:rgba(99,102,241,.22); color:var(--text);
+  border-bottom-right-radius:3px; }
+.bubble.ai{ align-self:flex-start; background:var(--surface-2); color:var(--text);
+  font-family:var(--mono); font-size:11px; border-bottom-left-radius:3px; white-space:pre-wrap; }
+.ai-chips{ display:flex; gap:4px; padding:6px 8px; border-top:1px solid var(--outline-soft); flex-wrap:wrap; }
+.ai-chip{
+  padding:5px 9px; border-radius:14px; border:1px solid var(--outline);
+  background:transparent; color:var(--accent); font-size:10.5px; cursor:pointer;
+}
+.ai-chip:hover{ background:rgba(99,102,241,.12); }
+.ai-input{
+  flex:1; padding:9px 12px; background:var(--surface-2);
+  border:1px solid var(--outline); border-radius:8px;
+  outline:none; color:var(--text); font-size:12px; margin:8px;
+}
+.hit-row{ padding:7px 10px; border-radius:8px; cursor:pointer; }
+.hit-row:hover{ background:rgba(99,102,241,.12); }
+.hit-row .h-loc{ font-family:var(--mono); font-size:10px; color:var(--accent); }
+.hit-row .h-txt{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+
+
 .splitter::after{
   content:""; width:34px; height:3px; border-radius:2px;
   background: var(--outline); transition: background .15s ease;
@@ -543,6 +637,13 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
       <span id="currentFile">main.py</span>
     </div>
 
+    <button class="icon-btn" id="btnCmd" title="命令面板" aria-label="打开命令面板">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 9V5a2 2 0 1 0-2 2h4zM15 9V5a2 2 0 1 1 2 2h-4zM9 15v4a2 2 0 1 1-2-2h4zM15 15v4a2 2 0 1 0 2-2h-4z"/>
+        <rect x="9" y="9" width="6" height="6" rx="1"/>
+      </svg>
+    </button>
+
     <button class="icon-btn" id="btnSave" title="保存" aria-label="保存文件">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
@@ -654,6 +755,20 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
             <span>关于</span>
           </button>
         </div>
+        <div class="foot-row">
+          <button class="ghost-btn" id="btnGit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="12" r="3"/><path d="M6 9v6M18 9a9 9 0 0 0-9-6"/></svg>
+            <span>Git</span>
+          </button>
+          <button class="ghost-btn" id="btnAi">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 15l.9 2.4L22.3 18l-2.4.9L19 21l-.9-2.1-2.4-.9 2.4-.6z"/></svg>
+            <span>AI</span>
+          </button>
+          <button class="ghost-btn" id="btnGsearch">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6M11 8v6"/></svg>
+            <span>搜索</span>
+          </button>
+        </div>
       </div>
     </aside>
 
@@ -741,6 +856,75 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
   </div>
 
   <div class="navbar"><i></i></div>
+
+  <!-- ============ v0.3 覆盖面板 ============ -->
+
+  <!-- 命令面板 -->
+  <div class="sheet" id="cmdk">
+    <div class="sheet-box">
+      <input class="sheet-input" id="cmdkInput" placeholder="搜索命令…（运行 / Git / AI / 片段 / 文件）">
+      <div class="sheet-body" id="cmdkList"></div>
+    </div>
+  </div>
+
+  <!-- Git 面板 -->
+  <div class="sheet" id="gitSheet">
+    <div class="sheet-box">
+      <div class="sheet-head">
+        <span class="sh-t">Git 仓库</span>
+        <span class="git-branch" id="gitBranch">main</span>
+        <button class="sheet-close" data-close="gitSheet">✕</button>
+      </div>
+      <div class="sheet-body">
+        <div style="padding:6px 10px; font-size:11px; color:var(--text-faint)" id="gitCount">3 个变更</div>
+        <div class="git-file"><b>M</b>main.py</div>
+        <div class="git-file" id="gitFile2"><b>A</b>utils.py</div>
+        <div class="git-file"><b>??</b>.devterminal</div>
+        <input class="git-msg" id="gitMsg" placeholder="提交信息…">
+        <button class="btn-primary" id="btnGitCommit">提交全部变更</button>
+        <div style="display:flex; gap:6px; margin-top:8px">
+          <button class="btn-ghost" id="btnGitPush">↑ 推送</button>
+          <button class="btn-ghost" id="btnGitPull">↓ 拉取</button>
+        </div>
+        <div style="padding:8px 10px 4px; font-family:var(--mono); font-size:10px; color:var(--text-faint)">
+          a3f9c2e feat: 猜数字支持重玩<br>8b1d4f7 init: first commit
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI 助手面板 -->
+  <div class="sheet" id="aiSheet">
+    <div class="sheet-box" style="height:72%">
+      <div class="sheet-head">
+        <span class="sh-t">✨ AI 助手</span>
+        <span class="git-branch" style="color:#34d399; background:rgba(52,211,153,.12)">Ollama 本地</span>
+        <button class="sheet-close" data-close="aiSheet">✕</button>
+      </div>
+      <div class="ai-msgs" id="aiMsgs">
+        <div class="bubble ai">你好！我是内置编程助手。可以问代码问题，或点下面的快捷动作。</div>
+      </div>
+      <div class="ai-chips">
+        <button class="ai-chip" data-ai="解释此文件">解释此文件</button>
+        <button class="ai-chip" data-ai="修复运行错误">修复运行错误</button>
+        <button class="ai-chip" data-ai="生成测试">生成测试</button>
+        <button class="ai-chip" data-ai="加注释">加注释</button>
+      </div>
+      <input class="ai-input" id="aiInput" placeholder="问点什么…（回车发送）">
+    </div>
+  </div>
+
+  <!-- 全局搜索 -->
+  <div class="sheet" id="gsSheet">
+    <div class="sheet-box">
+      <div class="sheet-head">
+        <span class="sh-t">全局搜索</span>
+        <button class="sheet-close" data-close="gsSheet">✕</button>
+      </div>
+      <input class="sheet-input" id="gsInput" placeholder="在所有项目文件中搜索…">
+      <div class="sheet-body" id="gsList"></div>
+    </div>
+  </div>
   <div class="toast" id="toast"></div>
 </div>
 
@@ -1154,6 +1338,167 @@ $("btnSave").addEventListener("click", function(){
   const stSave = document.getElementById("stSave");
   if (stSave){ stSave.textContent = "已保存"; stSave.classList.remove("warn"); }
 });
+
+/* ==================================================================
+   9. v0.3：命令面板 / Git / AI / 全局搜索
+   ================================================================== */
+const COMMANDS = [
+  { id:"run", t:"运行当前文件", s:"Ctrl-R 的移动版", cat:"run" },
+  { id:"save", t:"保存当前文件", s:"写入项目目录", cat:"save" },
+  { id:"find", t:"查找 / 替换（当前文件）", s:"计数跳转 + 全部替换", cat:"find" },
+  { id:"gsearch", t:"全局搜索", s:"在所有项目文件中查找", cat:"gsearch" },
+  { id:"git", t:"Git 仓库", s:"状态 / 提交 / 推送 / 拉取", cat:"git" },
+  { id:"ai", t:"AI 助手", s:"解释代码 / 修复报错 / 生成测试", cat:"ai" },
+  { id:"snip-main", t:"插入片段：Python 主入口", s:"if __name__ == \"__main__\"", cat:"snip" },
+  { id:"snip-class", t:"插入片段：Python 类骨架", s:"含 __init__ 与 __repr__", cat:"snip" },
+  { id:"snip-try", t:"插入片段：异常处理", s:"try / except / finally", cat:"snip" },
+  { id:"snip-jmain", t:"插入片段：Java 主类", s:"public static void main", cat:"snip" },
+  { id:"settings", t:"设置", s:"主题 / 字号 / AI 端点", cat:"settings" },
+  { id:"diag", t:"环境自检", s:"逐项探测工具链", cat:"diag" }
+];
+
+function openSheet(id){
+  document.querySelectorAll(".sheet").forEach(function(s){ s.classList.remove("open"); });
+  $(id).classList.add("open");
+  setDrawer(false);
+}
+document.querySelectorAll("[data-close]").forEach(function(b){
+  b.addEventListener("click", function(){ $(b.dataset.close).classList.remove("open"); });
+});
+document.querySelectorAll(".sheet").forEach(function(s){
+  s.addEventListener("click", function(e){ if (e.target === s) s.classList.remove("open"); });
+});
+
+/* ---- 命令面板 ---- */
+const cmdIcons = {
+  run:'<path d="M8 5.5v13l11-6.5z"/>', save:'<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>',
+  find:'<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+  gsearch:'<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6M11 8v6"/>',
+  git:'<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="12" r="3"/><path d="M6 9v6M18 9a9 9 0 0 0-9-6"/>',
+  ai:'<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>',
+  snip:'<path d="M8 6l-5 6 5 6M16 6l5 6-5 6"/>',
+  settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+  diag:'<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/>'
+};
+function renderCmdk(q){
+  const list = COMMANDS.filter(function(c){
+    return !q || c.t.toLowerCase().indexOf(q.toLowerCase()) >= 0 || c.s.toLowerCase().indexOf(q.toLowerCase()) >= 0;
+  });
+  $("cmdkList").innerHTML = list.map(function(c){
+    const icon = cmdIcons[c.cat] || cmdIcons.snip;
+    return '<div class="cmd-row" data-cmd="' + c.id + '">' +
+      '<div class="cico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + icon + '</svg></div>' +
+      '<div><div class="ct">' + c.t + '</div><div class="cs">' + c.s + '</div></div></div>';
+  }).join("") || '<div style="padding:20px;text-align:center;color:var(--text-faint);font-size:12px">没有匹配的命令</div>';
+  document.querySelectorAll("#cmdkList .cmd-row").forEach(function(row){
+    row.addEventListener("click", function(){ execCommand(row.dataset.cmd); });
+  });
+}
+function execCommand(id){
+  $("cmdk").classList.remove("open");
+  const c = COMMANDS.find(function(x){ return x.id === id; });
+  if (!c) return;
+  switch(c.cat){
+    case "run": $("btnRun").click(); break;
+    case "save": $("btnSave").click(); break;
+    case "find": toast("查找 / 替换 · 在真机会展开查找条（计数跳转 + 单个/全部替换）"); break;
+    case "gsearch": openSheet("gsSheet"); $("gsInput").focus(); break;
+    case "git": openSheet("gitSheet"); break;
+    case "ai": openSheet("aiSheet"); $("aiInput").focus(); break;
+    case "settings": toast("设置 · 主题 / 字号 / 超时 / AI 端点（Ollama 本地）"); break;
+    case "diag": $("btnDiagnostics").click(); break;
+    default: toast("已插入片段：" + c.t.replace("插入片段：", ""));
+  }
+}
+$("cmdkInput").addEventListener("input", function(){ renderCmdk(this.value); });
+$("cmdkInput").addEventListener("keydown", function(e){
+  if (e.key === "Enter"){
+    const first = document.querySelector("#cmdkList .cmd-row");
+    if (first) execCommand(first.dataset.cmd);
+  }
+});
+$("btnCmd").addEventListener("click", function(){
+  openSheet("cmdk"); renderCmdk(""); $("cmdkInput").value = ""; $("cmdkInput").focus();
+});
+
+/* ---- Git 面板 ---- */
+$("btnGit").addEventListener("click", function(){ openSheet("gitSheet"); });
+$("btnGitCommit").addEventListener("click", function(){
+  const msg = $("gitMsg").value.trim();
+  if (!msg){ toast("请先填写提交信息"); return; }
+  const n = document.querySelectorAll(".git-file").length;
+  toast("已提交：" + n + " 个文件变更（main）");
+  $("gitMsg").value = "";
+});
+$("btnGitPush").addEventListener("click", function(){ toast("推送 · remote 用 URL 内嵌 token 鉴权（离线时提示无法解析主机）"); });
+$("btnGitPull").addEventListener("click", function(){ toast("拉取 · 合并远程更新到 main"); });
+
+/* ---- AI 面板 ---- */
+const AI_REPLIES = {
+  "解释此文件": "这个文件实现了一个猜数字游戏：\n\n1. random.randint 生成 1-100 的随机数\n2. while True 循环读取玩家输入\n3. 用 int(input()) 把输入转成整数\n4. 比较 guess 与 secret，提示偏大/偏小\n5. 猜中后 break 退出并统计次数\n\n可改进：对非数字输入加 try/except。",
+  "修复运行错误": "错误原因：input() 返回字符串，int() 转换非数字文本会抛 ValueError。\n\n修复：\n```python\ntry:\n    guess = int(input(\"请输入: \"))\nexcept ValueError:\n    print(\"请输入数字\")\n    continue\n```",
+  "生成测试": "```python\nimport unittest\nfrom main import guess_game\n\nclass TestGuess(unittest.TestCase):\n    def test_compare_logic(self):\n        self.assertTrue(1 <= 50 <= 100)\n\nif __name__ == \"__main__\":\n    unittest.main()\n```",
+  "加注释": "```python\ndef guess_game():\n    \"\"\"猜数字小游戏：随机数 1-100，统计尝试次数\"\"\"\n    secret = random.randint(1, 100)  # 生成答案\n    tries = 0                        # 尝试计数\n    while True:                      # 主循环\n        guess = int(input(\"请输入: \"))\n        tries += 1\n        if guess < secret:\n            print(\"太小了！\")\n        elif guess > secret:\n            print(\"太大了！\")\n        else:\n            print(f\"猜对了！用了 {tries} 次\")\n            break\n```"
+};
+function addAiMsg(text, role){
+  const div = document.createElement("div");
+  div.className = "bubble " + role;
+  $("aiMsgs").appendChild(div);
+  if (role === "ai"){
+    // 打字机效果
+    let i = 0;
+    const timer = setInterval(function(){
+      i += 3;
+      div.textContent = text.slice(0, i);
+      $("aiMsgs").scrollTop = $("aiMsgs").scrollHeight;
+      if (i >= text.length) clearInterval(timer);
+    }, 16);
+  } else {
+    div.textContent = text;
+  }
+  $("aiMsgs").scrollTop = $("aiMsgs").scrollHeight;
+}
+function aiAsk(q){
+  addAiMsg(q, "user");
+  setTimeout(function(){
+    addAiMsg(AI_REPLIES[q] || "（演示模式）已收到问题：「" + q + "」。真机上将调用你配置的 OpenAI 兼容端点（默认本机 Ollama，本地推理 = 离线可用）。", "ai");
+  }, 400);
+}
+document.querySelectorAll(".ai-chip").forEach(function(ch){
+  ch.addEventListener("click", function(){ aiAsk(ch.dataset.ai); });
+});
+$("aiInput").addEventListener("keydown", function(e){
+  if (e.key === "Enter" && this.value.trim()){
+    aiAsk(this.value.trim()); this.value = "";
+  }
+});
+$("btnAi").addEventListener("click", function(){ openSheet("aiSheet"); });
+
+/* ---- 全局搜索 ---- */
+const HITS = [
+  { f:"main.py", l:10, t:'guess = int(input("请输入: "))' },
+  { f:"main.py", l:5, t:'"""猜数字小游戏"""' },
+  { f:"main.py", l:20, t:'if __name__ == "__main__":' },
+  { f:"utils.py", l:6, t:"def wrapper(*args, **kwargs):" },
+  { f:"utils.py", l:9, t:"result = func(*args, **kwargs)" },
+  { f:"Main.java", l:3, t:"public static void main(String[] args) {" },
+  { f:"Main.java", l:5, t:"int secret = new Random().nextInt(100);" }
+];
+function renderHits(q){
+  const list = q ? HITS.filter(function(h){ return h.t.toLowerCase().indexOf(q.toLowerCase()) >= 0; }) : [];
+  $("gsList").innerHTML = list.map(function(h){
+    return '<div class="hit-row"><div class="h-loc">' + h.f + ' · 行 ' + h.l + '</div><div class="h-txt">' + h.t.replace(/</g,"&lt;") + '</div></div>';
+  }).join("") || (q ? '<div style="padding:20px;text-align:center;color:var(--text-faint);font-size:12px">没有匹配结果</div>'
+                     : '<div style="padding:20px;text-align:center;color:var(--text-faint);font-size:12px">输入关键词开始搜索（防抖 400ms 自动触发）</div>');
+  document.querySelectorAll(".hit-row").forEach(function(r, i){
+    r.addEventListener("click", function(){
+      $("gsSheet").classList.remove("open");
+      toast("已跳转到 " + list[i].f + " 第 " + list[i].l + " 行");
+    });
+  });
+}
+$("gsInput").addEventListener("input", function(){ renderHits(this.value); });
+$("btnGsearch").addEventListener("click", function(){ openSheet("gsSheet"); renderHits(""); $("gsInput").focus(); });
 
 /* ==================================================================
    7. 运行：打字机逐行输出

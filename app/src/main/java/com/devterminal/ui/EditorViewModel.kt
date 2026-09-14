@@ -4,9 +4,11 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.devterminal.engine.EnvDiagnostics
+import com.devterminal.engine.AiClient
 import com.devterminal.engine.EnvironmentInstaller
 import com.devterminal.engine.ExecutionService
 import com.devterminal.engine.FriendlyError
+import com.devterminal.engine.GitManager
 import com.devterminal.engine.Language
 import com.devterminal.engine.RunEvent
 import com.devterminal.engine.RunRequest
@@ -72,7 +74,18 @@ data class UiState(
     val insertSignal: Long = 0,
     val insertText: String? = null,
     /** 每次自增退格一次 */
-    val backspaceSignal: Long = 0
+    val backspaceSignal: Long = 0,
+    // ---------- Git（v0.3） ----------
+    val gitStatus: GitManager.GitStatus? = null,
+    val gitBusy: Boolean = false,
+    val gitLastResult: String? = null,
+    // ---------- AI 助手（v0.3） ----------
+    val aiMessages: List<AiClient.ChatMessage> = emptyList(),
+    val aiBusy: Boolean = false,
+    val aiInputDraft: String = "",
+    // ---------- 全局搜索（v0.3） ----------
+    val globalSearching: Boolean = false,
+    val globalResults: List<SearchHit> = emptyList()
 )
 
 class EditorViewModel(app: Application) : AndroidViewModel(app) {
@@ -88,6 +101,8 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 当前项目根目录（默认取第一个项目） */
     private var currentProject: File? = null
+
+    private val git = GitManager(installer)
 
     init {
         prepareEnvironment()
@@ -614,6 +629,181 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             idx = content.indexOf(query, idx + query.length)
         }
         return result
+    }
+
+    // ---------- Git（v0.3） ----------
+
+    /** 刷新当前项目的 Git 状态 */
+    fun refreshGitStatus() {
+        val dir = currentProject ?: return
+        viewModelScope.launch {
+            _ui.value = _ui.value.copy(gitBusy = true)
+            val status = withContext(Dispatchers.IO) { git.status(dir) }
+            _ui.value = _ui.value.copy(gitBusy = false, gitStatus = status)
+        }
+    }
+
+    fun gitInit() {
+        val dir = currentProject ?: return
+        val s = _ui.value.settings
+        viewModelScope.launch {
+            _ui.value = _ui.value.copy(gitBusy = true)
+            val result = withContext(Dispatchers.IO) {
+                git.init(
+                    dir,
+                    s.gitUserName.ifBlank { "devterminal" },
+                    s.gitUserEmail.ifBlank { "dev@terminal.local" }
+                )
+            }
+            _ui.value = _ui.value.copy(gitBusy = false, gitLastResult = result)
+            refreshGitStatus()
+        }
+    }
+
+    fun gitCommit(message: String) {
+        val dir = currentProject ?: return
+        val s = _ui.value.settings
+        viewModelScope.launch {
+            _ui.value = _ui.value.copy(gitBusy = true)
+            val result = withContext(Dispatchers.IO) {
+                git.commitAll(dir, message, s.gitUserName.ifBlank { "devterminal" },
+                    s.gitUserEmail.ifBlank { "dev@terminal.local" })
+            }
+            _ui.value = _ui.value.copy(gitBusy = false, gitLastResult = result)
+            refreshGitStatus()
+        }
+    }
+
+    fun gitPush() {
+        val dir = currentProject ?: return
+        viewModelScope.launch {
+            _ui.value = _ui.value.copy(gitBusy = true)
+            val result = withContext(Dispatchers.IO) { git.push(dir, _ui.value.settings.gitRemoteUrl) }
+            _ui.value = _ui.value.copy(gitBusy = false, gitLastResult = result)
+        }
+    }
+
+    fun gitPull() {
+        val dir = currentProject ?: return
+        viewModelScope.launch {
+            _ui.value = _ui.value.copy(gitBusy = true)
+            val result = withContext(Dispatchers.IO) { git.pull(dir, _ui.value.settings.gitRemoteUrl) }
+            _ui.value = _ui.value.copy(gitBusy = false, gitLastResult = result)
+            refreshTree()
+        }
+    }
+
+    fun onGitConfigChanged(name: String, email: String, remote: String) {
+        val s = _ui.value.settings
+        updateSettings(s.copy(gitUserName = name, gitUserEmail = email, gitRemoteUrl = remote))
+        _ui.value = _ui.value.copy(gitLastResult = "Git 配置已保存")
+    }
+
+    // ---------- AI 助手（v0.3） ----------
+
+    fun onAiInputChanged(text: String) {
+        _ui.value = _ui.value.copy(aiInputDraft = text)
+    }
+
+    /** 发送输入框里的自由提问 */
+    fun sendAiInput() {
+        val text = _ui.value.aiInputDraft.trim()
+        if (text.isNotBlank()) {
+            _ui.value = _ui.value.copy(aiInputDraft = "")
+            askAi(text)
+        }
+    }
+
+    /** 快捷动作：解释文件 / 修复报错 / 生成测试 / 加注释 */
+    fun aiQuick(label: String) {
+        val st = _ui.value
+        val prompt = when (label) {
+            "解释此文件" -> "解释当前文件的代码逻辑，要点式回答"
+            "修复运行错误" -> {
+                val errs = AiClient.errorContext(st.output)
+                if (errs.isBlank()) {
+                    _ui.value = st.copy(message = "还没有运行输出，先跑一次再修")
+                    return
+                }
+                "这是最近一次运行的报错输出，帮我定位原因并修复当前文件中的问题：\n$errs"
+            }
+            "生成测试" -> "为当前文件的核心函数生成单元测试代码（Python 用 unittest，Java 用 JUnit）"
+            "加注释" -> "给当前文件里的每个函数加上中文文档注释，返回完整代码"
+            else -> label
+        }
+        askAi(prompt)
+    }
+
+    /**
+     * 发起 AI 对话。
+     * 上下文 = 系统提示词 + 近 6 条历史 + 当前文件内容（截断）+ 本轮请求。
+     */
+    private fun askAi(prompt: String) {
+        val st = _ui.value
+        if (!st.settings.aiConfigured) {
+            _ui.value = st.copy(message = "请先在设置里配置 AI 端点")
+            return
+        }
+        if (st.aiBusy) return
+        val history = st.aiMessages
+        val fileContext = if (st.currentFile != null)
+            "【当前文件 ${st.currentFile.name}】\n${st.editorText.take(3500)}\n\n【用户请求】\n$prompt"
+        else prompt
+        _ui.value = st.copy(
+            aiBusy = true,
+            aiMessages = history + AiClient.ChatMessage("user", prompt)
+        )
+        viewModelScope.launch {
+            val reply = withContext(Dispatchers.IO) {
+                runCatching {
+                    AiClient(_ui.value.settings).chat(
+                        AiClient.SYSTEM_PROMPT,
+                        history.takeLast(6),
+                        fileContext
+                    )
+                }.getOrElse { e -> "⚠️ ${e.message ?: "请求失败"}" }
+            }
+            _ui.value = _ui.value.copy(
+                aiBusy = false,
+                aiMessages = _ui.value.aiMessages + AiClient.ChatMessage("assistant", reply)
+            )
+        }
+    }
+
+    // ---------- 全局搜索（v0.3） ----------
+
+    /** 跨文件搜索：遍历项目内文本文件，收集命中行（上限 200 条防卡顿） */
+    fun searchAll(query: String) {
+        val dir = currentProject ?: return
+        if (query.isBlank()) return
+        viewModelScope.launch {
+            _ui.value = _ui.value.copy(globalSearching = true)
+            val hits = withContext(Dispatchers.IO) {
+                val result = mutableListOf<SearchHit>()
+                dir.walkTopDown()
+                    .filter { it.isFile && !it.name.startsWith(".") }
+                    .filter { it.extension in setOf("py", "java", "txt", "md", "json", "xml") }
+                    .forEach { f ->
+                        if (result.size >= 200) return@forEach
+                        runCatching {
+                            f.readText().lines().forEachIndexed { idx, line ->
+                                if (result.size < 200 && line.contains(query, ignoreCase = true)) {
+                                    result.add(
+                                        SearchHit(f.absolutePath, f.name, idx + 1, line.trim().take(120))
+                                    )
+                                }
+                            }
+                        }
+                    }
+                result
+            }
+            _ui.value = _ui.value.copy(globalSearching = false, globalResults = hits)
+        }
+    }
+
+    /** 从全局搜索结果打开对应文件 */
+    fun openSearchHit(hit: SearchHit) {
+        openFile(File(hit.filePath))
     }
 
     // ---------- 导入 / 导出（SAF） ----------

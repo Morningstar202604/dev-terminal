@@ -25,6 +25,10 @@
 > **v0.2 对标升级**：UX 对齐 2026 年移动编程工具第一梯队（Pydroid 3 的扩展键盘、
 > Spck 的 on-screen coding keys、Acode 的多 Tab 与查找替换、VS Code 的状态栏与会话恢复），
 > 每一项都是为「手机上真的写代码」设计的，不是桌面功能的照搬。
+>
+> **v0.3 对标升级**：补齐 2026 年移动编程的「新四大件」——
+> **命令面板**（Cursor 风格 ⌘K 动作搜索）、**Git 面板**（Spck 风格，调内置 git）、
+> **AI 助手**（BYOK + 本地 Ollama 优先，Replit 风格）、**全局搜索 + 代码片段**（Acode 风格）。
 
 ## 架构
 
@@ -50,6 +54,9 @@ dev-terminal/
 │   │   ├── FriendlyError.kt           报错翻译成人话
 │   │   ├── CompletionProvider.kt      静态补全词表 + 文档符号提取
 │   │   ├── TermuxEngine.kt            执行引擎（流式输出 + stdin + Java 多文件编译）
+│   │   ├── GitManager.kt              Git 操作（内置 git，v0.3）
+│   │   ├── AiClient.kt                AI 客户端（OpenAI 兼容，v0.3）
+│   │   ├── Snippets.kt                代码片段库（v0.3）
 │   │   ├── ExecutionService.kt        前台服务保活（防 Android 12+ 杀进程）
 │   │   ├── CrashLogger.kt             全局崩溃日志
 │   │   ├── RunModels.kt               Language / RunRequest / RunEvent
@@ -70,6 +77,10 @@ dev-terminal/
 │       ├── StatusBar.kt               底部状态栏（v0.2）
 │       ├── FileTree.kt                文件树（长按操作）
 │       ├── OutputPanel.kt             输出面板 + 交互输入行
+│       ├── CommandPalette.kt          命令面板 ⌘K（v0.3）
+│       ├── GlobalSearch.kt            全局搜索（v0.3）
+│       ├── GitPanel.kt                Git 面板（v0.3）
+│       ├── AiPanel.kt                 AI 助手面板（v0.3）
 │       └── theme/Theme.kt             Material 3 主题
 ├── design/mockup.html                 高保真可交互原型（浏览器直接打开）
 ├── tools/
@@ -223,6 +234,45 @@ Compose 图标 import 完整性、package 与目录一致性、未使用的 impo
 `Ln 12, Col 8 · Python · 452 字符 · ● 未保存`——VS Code 的标配信息条，
 随时知道光标在哪、文件脏不脏。
 
+### 20. 命令面板 ⌘K（v0.3）
+
+顶栏命令图标唤出，**搜索一切**：运行、保存、Git、AI、全局搜索、设置、12 个代码片段
+——所有功能一个输入框直达。移动端放不下 N 层菜单，「搜索式导航」是最省屏幕空间的
+交互（Cursor / VS Code 的核心范式）。
+
+### 21. Git 面板（v0.3）
+
+直接调用**内置工具链里的 git 二进制**（零额外依赖、离线可用）：
+
+- 状态：分支名、变更文件列表（`--porcelain`）、最近提交
+- 动作：初始化（main）、全部暂存并提交、推送、拉取
+- 配置：Git 身份与远程 URL（token 可内嵌，`-c` 参数注入不落盘）
+- 报错翻译：`403`→检查令牌、`non-fast-forward`→先拉取再推送、`who are you`→填身份
+
+对标 Spck 的 Git 工作流——在手机上完成「改代码 → commit → push」全流程。
+
+### 22. AI 助手（v0.3，可选）
+
+**BYOK + 本地端点优先**——2026 年移动端 AI 编程的主流形态：
+
+- 默认端点：本机 **Ollama**（`http://127.0.0.1:11434/v1`），本地推理 = **离线可用**
+- 兼容任何 OpenAI 协议端点（llama.cpp server / LM Studio / 云 API）
+- 四个快捷动作：**解释此文件 / 修复运行错误 / 生成测试 / 加注释**
+- 「修复运行错误」会把最近一次运行的报错输出自动拼进上下文
+- 上下文自动携带当前文件（截断 3500 字符防 token 爆炸）
+
+> App 本体功能完全离线；AI 是可选功能，不配置端点就不发起任何网络请求。
+
+### 23. 全局搜索（v0.3）
+
+跨文件搜索所有 `.py / .java / .txt / .md / .json / .xml`，显示「文件 · 行号 + 命中行」，
+点击直达。输入防抖 400ms，结果上限 200 条防卡顿。对标 Acode 的 project-wide search。
+
+### 24. 代码片段库（v0.3）
+
+12 个「手写麻烦、复用率高」的骨架代码（Python 主入口 / 类 / dataclass / 装饰器，
+Java POJO / Stream / 正则等），从命令面板插入到光标处。
+
 ## UI 原型
 
 `design/mockup.html` 是一个**可直接双击打开**的高保真原型，用纯 HTML/CSS/JS 实现：
@@ -294,6 +344,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 | M8 | 设置页 + 主题切换 | ✅ |
 | M9 | 静态代码补全 + 崩溃日志 + 自检脚本 | ✅ |
 | M10 | 体验对标版：Tab 页 / 符号栏 / 查找替换 / 状态栏 / 会话恢复 / 输出拖高 | ✅ |
+| M11 | 2026 全家桶：命令面板 ⌘K / Git 面板 / AI 助手（BYOK）/ 全局搜索 / 代码片段 | ✅ |
 
 ## 已知限制
 

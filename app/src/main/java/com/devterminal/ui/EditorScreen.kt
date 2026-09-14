@@ -18,10 +18,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.KeyboardCommandKey
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
@@ -89,8 +92,14 @@ fun EditorScreen(vm: EditorViewModel) {
     var showRunConfig by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
+    var showPalette by remember { mutableStateOf(false) }
+    var showGit by remember { mutableStateOf(false) }
+    var showAi by remember { mutableStateOf(false) }
+    var showGlobalSearch by remember { mutableStateOf(false) }
     /** 长按文件树后的操作目标 */
     var actionTarget by remember { mutableStateOf<File?>(null) }
+    /** 全局搜索关键词 */
+    var gsearchQuery by remember { mutableStateOf("") }
 
     // SAF：导入任意文件到项目
     val importLauncher = rememberLauncherForActivityResult(
@@ -235,6 +244,37 @@ fun EditorScreen(vm: EditorViewModel) {
                                 Text("关于", fontSize = 12.sp)
                             }
                         }
+                        // 第三行：Git / AI / 全局搜索（v0.3）
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            TextButton(
+                                onClick = { showGit = true; vm.refreshGitStatus() },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Filled.AccountTree, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(3.dp))
+                                Text("Git", fontSize = 12.sp)
+                            }
+                            TextButton(
+                                onClick = { showAi = true },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Filled.AutoAwesome, null, Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.secondary)
+                                Spacer(Modifier.width(3.dp))
+                                Text("AI", fontSize = 12.sp)
+                            }
+                            TextButton(
+                                onClick = { showGlobalSearch = true },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Filled.Search, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(3.dp))
+                                Text("搜索", fontSize = 12.sp)
+                            }
+                        }
                     }
                 }
             }
@@ -262,6 +302,10 @@ fun EditorScreen(vm: EditorViewModel) {
                         }
                     },
                     actions = {
+                        IconButton(onClick = { showPalette = true }) {
+                            Icon(Icons.Filled.KeyboardCommandKey, "命令面板",
+                                tint = MaterialTheme.colorScheme.primary)
+                        }
                         IconButton(onClick = { vm.showFind(true) }) {
                             Icon(Icons.Filled.Search, "查找 / 替换",
                                 tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
@@ -414,6 +458,70 @@ fun EditorScreen(vm: EditorViewModel) {
         )
     }
 
+    // ---------- 命令面板：所有动作的搜索入口（v0.3） ----------
+    if (showPalette) {
+        CommandPalette(
+            commands = buildCommands(vm, ui,
+                onOpen = { showPalette = false },
+                // 触发对话框的动作要在面板关闭后生效
+                onCommand = { cmd -> when (cmd) {
+                    "diag" -> showDiagnostics = true
+                    "settings" -> showSettings = true
+                    "about" -> showAbout = true
+                    "newproj" -> showNewProject = true
+                    "git" -> { showGit = true; vm.refreshGitStatus() }
+                    "ai" -> showAi = true
+                    "gsearch" -> showGlobalSearch = true
+                    "runconfig" -> showRunConfig = true
+                } }
+            ),
+            onDismiss = { showPalette = false }
+        )
+    }
+
+    if (showGit) {
+        GitPanelDialog(
+            status = ui.gitStatus,
+            busy = ui.gitBusy,
+            lastResult = ui.gitLastResult,
+            gitName = ui.settings.gitUserName,
+            gitEmail = ui.settings.gitUserEmail,
+            remoteUrl = ui.settings.gitRemoteUrl,
+            onConfigChange = vm::onGitConfigChanged,
+            onRefresh = vm::refreshGitStatus,
+            onInit = vm::gitInit,
+            onCommit = vm::gitCommit,
+            onPush = vm::gitPush,
+            onPull = vm::gitPull,
+            onDismiss = { showGit = false }
+        )
+    }
+
+    if (showAi) {
+        AiPanelDialog(
+            messages = ui.aiMessages,
+            busy = ui.aiBusy,
+            configured = ui.settings.aiConfigured,
+            inputDraft = ui.aiInputDraft,
+            onInputChange = vm::onAiInputChanged,
+            onSend = vm::sendAiInput,
+            onQuick = vm::aiQuick,
+            onDismiss = { showAi = false }
+        )
+    }
+
+    if (showGlobalSearch) {
+        GlobalSearchDialog(
+            query = gsearchQuery,
+            results = ui.globalResults,
+            searching = ui.globalSearching,
+            onQueryChange = { gsearchQuery = it },
+            onSearch = vm::searchAll,
+            onOpen = { hit -> vm.openSearchHit(hit); showGlobalSearch = false },
+            onDismiss = { showGlobalSearch = false }
+        )
+    }
+
     if (showDiagnostics) {
         DiagnosticsDialog(
             diagnostics = ui.diagnostics,
@@ -448,6 +556,9 @@ fun EditorScreen(vm: EditorViewModel) {
             onFontSizeChange = { vm.updateSettings(ui.settings.copy(editorFontSize = it)) },
             onAutoSaveChange = { vm.updateSettings(ui.settings.copy(autoSave = it)) },
             onTimeoutChange = { vm.updateSettings(ui.settings.copy(timeoutSeconds = it)) },
+            onAiConfigChange = { url, key, model ->
+                vm.updateSettings(ui.settings.copy(aiBaseUrl = url, aiApiKey = key, aiModel = model))
+            },
             onDismiss = { showSettings = false }
         )
     }
@@ -465,8 +576,13 @@ private fun SettingsDialog(
     onFontSizeChange: (Int) -> Unit,
     onAutoSaveChange: (Boolean) -> Unit,
     onTimeoutChange: (Int) -> Unit,
+    onAiConfigChange: (url: String, key: String, model: String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var aiUrl by remember { mutableStateOf(settings.aiBaseUrl) }
+    var aiKey by remember { mutableStateOf(settings.aiApiKey) }
+    var aiModel by remember { mutableStateOf(settings.aiModel) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("设置") },
@@ -516,6 +632,48 @@ private fun SettingsDialog(
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
                 )
+                Spacer(Modifier.height(16.dp))
+                // AI 助手（可选，BYOK）
+                Text("AI 助手（可选）", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "默认指向本机 Ollama，本地推理即离线可用；不配置不影响其他功能。",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                )
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = aiUrl,
+                    onValueChange = { aiUrl = it },
+                    label = { Text("端点 URL（OpenAI 兼容，/v1 结尾）", fontSize = 11.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                    singleLine = true
+                )
+                Spacer(Modifier.height(4.dp))
+                OutlinedTextField(
+                    value = aiModel,
+                    onValueChange = { aiModel = it },
+                    label = { Text("模型名", fontSize = 11.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                    singleLine = true
+                )
+                Spacer(Modifier.height(4.dp))
+                OutlinedTextField(
+                    value = aiKey,
+                    onValueChange = { aiKey = it },
+                    label = { Text("API Key（本地端点可留空）", fontSize = 11.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                    singleLine = true
+                )
+                TextButton(
+                    onClick = { onAiConfigChange(aiUrl.trim(), aiKey.trim(), aiModel.trim()) },
+                    enabled = aiUrl.isNotBlank()
+                ) { Text("保存 AI 配置", fontSize = 12.sp) }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } }
@@ -830,6 +988,50 @@ private fun MissingToolchainScreen(
             Spacer(Modifier.height(20.dp))
             Button(onClick = onRetry) { Text("重试") }
         }
+    }
+}
+
+/**
+ * 组装命令面板的动作列表。
+ * 纯 UI 动作直接执行；打开对话框的通过 [onCommand] 回调交给调用方置位状态。
+ */
+private fun buildCommands(
+    vm: EditorViewModel,
+    ui: UiState,
+    onCommand: (String) -> Unit
+): List<Command> = buildList {
+    add(Command("run", "运行当前文件", ui.currentFile?.name ?: "未打开文件",
+        Icons.Filled.PlayArrow) { vm.runCurrent() })
+    add(Command("save", "保存当前文件", "Ctrl-S 的移动版",
+        Icons.Filled.Save) { vm.save() })
+    add(Command("find", "查找 / 替换（当前文件）", "计数跳转 + 单个/全部替换",
+        Icons.Filled.Search) { vm.showFind(true) })
+    add(Command("gsearch", "全局搜索", "在所有项目文件中查找",
+        Icons.Filled.Search) { onCommand("gsearch") })
+    add(Command("git", "Git 仓库", "状态 / 提交 / 推送 / 拉取",
+        Icons.Filled.AccountTree) { onCommand("git") })
+    add(Command("ai", "AI 助手", "解释代码 / 修复报错 / 生成测试",
+        Icons.Filled.AutoAwesome) { onCommand("ai") })
+    add(Command("runconfig", "运行配置", "命令行参数 / Java 主类",
+        Icons.Filled.Tune) { onCommand("runconfig") })
+    add(Command("newproj", "新建项目", "6 个模板",
+        Icons.Filled.Add) { onCommand("newproj") })
+    add(Command("export", "导出当前文件", "通过 SAF 写到手机任意位置",
+        Icons.Filled.FileUpload) { onCommand("export") })
+    add(Command("diag", "环境自检", "Python / pip / Java / javac / Git",
+        Icons.Filled.Info) { onCommand("diag") })
+    add(Command("settings", "设置", "主题 / 字号 / 超时 / AI 端点",
+        Icons.Filled.Settings) { onCommand("settings") })
+    add(Command("about", "关于 DevTerminal", "版本与开源许可",
+        Icons.Filled.Info) { onCommand("about") })
+    // 代码片段：手写麻烦、复用率高的骨架代码
+    com.devterminal.engine.Snippets.all.forEach { s ->
+        add(Command(
+            "snip-${s.id}",
+            "插入片段：${s.title}",
+            s.description,
+            Icons.Filled.Code
+        ) { vm.insertSymbol(s.code) })
     }
 }
 

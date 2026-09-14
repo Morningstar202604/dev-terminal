@@ -11,8 +11,21 @@ data class AppSettings(
     /** 单次运行超时（秒），防止死循环把手机拖死 */
     val timeoutSeconds: Int = 120,
     /** 输出面板高度（dp），可拖拽调整，重启保留 */
-    val outputHeightDp: Int = 260
-)
+    val outputHeightDp: Int = 260,
+    // ---------- AI 助手（可选，BYOK） ----------
+    /** OpenAI 兼容端点；默认本机 Ollama（本地推理 = 离线可用） */
+    val aiBaseUrl: String = "http://127.0.0.1:11434/v1",
+    val aiApiKey: String = "",
+    val aiModel: String = "qwen2.5-coder:3b",
+    // ---------- Git ----------
+    val gitUserName: String = "",
+    val gitUserEmail: String = "",
+    /** 远程仓库地址（token 可内嵌在 URL 里，如 https://user:token@host/repo.git） */
+    val gitRemoteUrl: String = ""
+) {
+    /** AI 是否已配置（端点非空即视为可用） */
+    val aiConfigured: Boolean get() = aiBaseUrl.isNotBlank()
+}
 
 /**
  * 基于 SharedPreferences 的轻量设置存储。
@@ -30,7 +43,13 @@ class SettingsStore(context: Context) {
         editorFontSize = prefs.getInt(KEY_FONT, 14),
         autoSave = prefs.getBoolean(KEY_AUTOSAVE, true),
         timeoutSeconds = prefs.getInt(KEY_TIMEOUT, 120),
-        outputHeightDp = prefs.getInt(KEY_OUTPUT_H, 260)
+        outputHeightDp = prefs.getInt(KEY_OUTPUT_H, 260),
+        aiBaseUrl = prefs.getString(KEY_AI_URL, "http://127.0.0.1:11434/v1") ?: "",
+        aiApiKey = prefs.getString(KEY_AI_KEY, "") ?: "",
+        aiModel = prefs.getString(KEY_AI_MODEL, "qwen2.5-coder:3b") ?: "",
+        gitUserName = prefs.getString(KEY_GIT_NAME, "") ?: "",
+        gitUserEmail = prefs.getString(KEY_GIT_EMAIL, "") ?: "",
+        gitRemoteUrl = prefs.getString(KEY_GIT_REMOTE, "") ?: ""
     )
 
     fun save(s: AppSettings) {
@@ -40,6 +59,12 @@ class SettingsStore(context: Context) {
             .putBoolean(KEY_AUTOSAVE, s.autoSave)
             .putInt(KEY_TIMEOUT, s.timeoutSeconds)
             .putInt(KEY_OUTPUT_H, s.outputHeightDp)
+            .putString(KEY_AI_URL, s.aiBaseUrl)
+            .putString(KEY_AI_KEY, s.aiApiKey)
+            .putString(KEY_AI_MODEL, s.aiModel)
+            .putString(KEY_GIT_NAME, s.gitUserName)
+            .putString(KEY_GIT_EMAIL, s.gitUserEmail)
+            .putString(KEY_GIT_REMOTE, s.gitRemoteUrl)
             .apply()
     }
 
@@ -76,5 +101,11 @@ class SettingsStore(context: Context) {
         const val KEY_LAST_PROJECT = "last_project"
         const val KEY_LAST_FILE = "last_file"
         const val KEY_LAST_TABS = "last_tabs"
+        const val KEY_AI_URL = "ai_base_url"
+        const val KEY_AI_KEY = "ai_api_key"
+        const val KEY_AI_MODEL = "ai_model"
+        const val KEY_GIT_NAME = "git_user_name"
+        const val KEY_GIT_EMAIL = "git_user_email"
+        const val KEY_GIT_REMOTE = "git_remote_url"
     }
 }
