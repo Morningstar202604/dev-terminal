@@ -41,10 +41,12 @@ class EnvironmentInstaller(private val context: Context) {
                 "LD_LIBRARY_PATH" to "$prefix/lib",
                 "LANG" to "en_US.UTF-8",
                 "TERM" to "xterm-256color",
+                // ncurses 默认 terminfo 路径硬编码为 termux 官方 prefix，这里显式指定
+                "TERMINFO" to "$prefix/share/terminfo",
                 "COLORTERM" to "truecolor",
                 // Python 相关
                 "PYTHONHOME" to prefix.absolutePath,
-                "PYTHONPATH" to "$prefix/lib/python3.11",
+                "PYTHONPATH" to "$prefix/lib/python3.14",
                 // 告诉子进程不要再往系统目录写缓存
                 "TMP" to tmp.absolutePath
             )

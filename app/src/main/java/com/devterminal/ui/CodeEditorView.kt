@@ -61,7 +61,7 @@ fun CodeEditorView(
     /** 查找跳转请求：pos 为全局字符偏移，requestId 变化即执行 */
     findRequest: FindRequest? = null,
     /** 双指缩放调整字号（zoom 增量，累积到阈值回调一次） */
-    onPinchZoom: ((Float) -> Unit)? = null
+    onPinchZoom: ((Int) -> Unit)? = null
 ) {
     val context = LocalContext.current
 
@@ -142,7 +142,7 @@ fun CodeEditorView(
 
                 // 装配语言：TextMate 高亮 + 静态补全
                 runCatching {
-                    val textMate = TextMateLanguage.create(file.extension)
+                    val textMate = TextMateLanguage.create(file.extension, false)
                     val wrapped = StaticCompletionLanguage(
                         delegate = textMate,
                         devLanguage = language,
@@ -156,39 +156,31 @@ fun CodeEditorView(
                     getComponent(EditorAutoCompletion::class.java).isEnabled = true
                 }
 
-                subscribeEvent(object : ContentChangeEvent.Subscriber() {
-                    override fun onEvent(
-                        event: ContentChangeEvent,
-                        dispatcher: io.github.rosemoe.sora.event.EventDispatcher
-                    ) {
-                        val current = editor.text?.toString() ?: return
-                        docRef.set(current)
-                        onTextChange(current)
-                    }
-                })
+                subscribeEvent(ContentChangeEvent::class.java) { _, _ ->
+                    val current = editor.text?.toString() ?: return@subscribeEvent
+                    docRef.set(current)
+                    onTextChange(current)
+                }
 
                 // 光标/选区变化 → 状态栏的行列显示
-                subscribeEvent(object : SelectionChangeEvent.Subscriber() {
-                    override fun onEvent(
-                        event: SelectionChangeEvent,
-                        dispatcher: io.github.rosemoe.sora.event.EventDispatcher
-                    ) {
-                        val line = runCatching { event.leftLine }.getOrDefault(0)
-                        val column = runCatching { event.leftColumn }.getOrDefault(0)
-                        cursorCallback(line, column)
-                    }
-                })
+                subscribeEvent(SelectionChangeEvent::class.java) { event, _ ->
+                    val line = runCatching { event.left.line }.getOrDefault(0)
+                    val column = runCatching { event.left.column }.getOrDefault(0)
+                    cursorCallback(line, column)
+                }
             }
         },
         update = { view ->
             docRef.set(text)
-            // 字号实时跟随设置
-            if (view.textSize != fontSize.toFloat()) view.setTextSize(fontSize.toFloat())
+            // 字号实时跟随设置（setTextSize 单位为 sp）
+            val targetPx = fontSize * view.resources.displayMetrics.scaledDensity
+            if (view.textSizePx != targetPx) view.setTextSize(fontSize.toFloat())
             // 仅当外部内容真的变化时才 setText，避免打断输入
             if (view.text?.toString() != text) {
-                val cursor = runCatching { view.cursor.left }.getOrDefault(0)
+                val line = runCatching { view.cursor.leftLine }.getOrDefault(0)
+                val col = runCatching { view.cursor.leftColumn }.getOrDefault(0)
                 view.setText(text)
-                runCatching { view.setSelection(cursor.coerceIn(0, text.length)) }
+                runCatching { view.setSelection(line, col) }
             }
         },
         onRelease = { it.release() }
@@ -200,16 +192,25 @@ private var textMateReady = false
 private fun initTextMate(assets: android.content.res.AssetManager) {
     if (textMateReady) return
     runCatching {
+        // 语法文件从 APK assets 读取
+        io.github.rosemoe.sora.langs.textmate.registry.FileProviderRegistry.getInstance()
+            .addFileProvider(
+                io.github.rosemoe.sora.langs.textmate.registry.provider.AssetsFileResolver(assets)
+            )
         GrammarRegistry.getInstance().loadGrammars("textmate/languages.json")
-        ThemeRegistry.getInstance().loadTheme(ThemeModel(assets, "textmate/themes/darcula.json"))
+        val themeSource = org.eclipse.tm4e.core.registry.IThemeSource.fromInputStream(
+            assets.open("textmate/themes/darcula.json"),
+            "darcula.json",
+            Charsets.UTF_8
+        )
+        ThemeRegistry.getInstance().loadTheme(ThemeModel(themeSource, "darcula"))
         textMateReady = true
     }
 }
 
 private fun CodeEditor.applyTheme() {
     runCatching {
-        val scheme = ThemeRegistry.getInstance().theme
-            ?.let { TextMateColorScheme.create(ThemeRegistry.getInstance()) }
-        colorScheme = scheme ?: EditorColorScheme()
-    }.onFailure { colorScheme = EditorColorScheme() }
+        TextMateColorScheme.create(ThemeRegistry.getInstance())
+    }.onSuccess { colorScheme = it }
+        .onFailure { colorScheme = EditorColorScheme() }
 }

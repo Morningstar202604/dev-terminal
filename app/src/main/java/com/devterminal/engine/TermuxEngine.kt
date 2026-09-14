@@ -3,8 +3,9 @@ package com.devterminal.engine
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.File
@@ -81,29 +82,29 @@ class TermuxEngine(private val context: Context) {
     /**
      * 执行，返回事件流。内部带超时保护，防止死循环把手机卡死。
      */
-    fun run(request: RunRequest, timeoutMs: Long = 120_000L): Flow<RunEvent> = flow {
+    fun run(request: RunRequest, timeoutMs: Long = 120_000L): Flow<RunEvent> = channelFlow {
         if (!isEnvironmentReady) {
-            emit(RunEvent.Failed("离线运行环境未就绪：缺少内置工具链（assets/usrtar.zip）。"))
-            return@flow
+            send(RunEvent.Failed("离线运行环境未就绪：缺少内置工具链（assets/usrtar.zip）。"))
+            return@channelFlow
         }
         val script = File(request.scriptPath)
         if (!script.exists()) {
-            emit(RunEvent.Failed("文件不存在：${request.scriptPath}"))
-            return@flow
+            send(RunEvent.Failed("文件不存在：${request.scriptPath}"))
+            return@channelFlow
         }
 
         val cmd = try {
             buildCommand(request, script)
         } catch (e: Exception) {
-            emit(RunEvent.Failed(e.message ?: "构建命令失败"))
-            return@flow
+            send(RunEvent.Failed(e.message ?: "构建命令失败"))
+            return@channelFlow
         }
 
         val env = EnvironmentInstaller.buildEnv(installer.filesDir)
         val workDir = File(request.workingDir).takeIf { it.isDirectory }
             ?: script.parentFile ?: installer.homeDir
 
-        emit(RunEvent.Started(cmd.joinToString(" ")))
+        send(RunEvent.Started(cmd.joinToString(" ")))
 
         val process = try {
             ProcessBuilder(cmd)
@@ -112,8 +113,8 @@ class TermuxEngine(private val context: Context) {
                 .redirectErrorStream(false)
                 .start()
         } catch (e: Exception) {
-            emit(RunEvent.Failed("启动进程失败：${e.message}"))
-            return@flow
+            send(RunEvent.Failed("启动进程失败：${e.message}"))
+            return@channelFlow
         }
 
         currentProcess = process
@@ -135,14 +136,19 @@ class TermuxEngine(private val context: Context) {
 
         try {
             // stdout / stderr 并发读取，避免缓冲区满导致死锁
-            val outReader = pump(process.inputStream) { emit(RunEvent.Stdout(it)) }
-            val errReader = pump(process.errorStream) { emit(RunEvent.Stderr(it)) }
-            val exit = process.waitFor()
-            outReader.join(1000); errReader.join(1000)
-            if (timedOut.get()) {
-                emit(RunEvent.Stderr("执行超时（${timeoutMs / 1000}s），进程已被终止。"))
+            // channelFlow 允许从子协程发事件；pumpLines 为挂起逐行读取
+            val outJob = launch(Dispatchers.IO) {
+                pumpLines(process.inputStream) { send(RunEvent.Stdout(it)) }
             }
-            emit(RunEvent.Finished(exit, System.currentTimeMillis() - started))
+            val errJob = launch(Dispatchers.IO) {
+                pumpLines(process.errorStream) { send(RunEvent.Stderr(it)) }
+            }
+            val exit = process.waitFor()
+            outJob.join(); errJob.join()
+            if (timedOut.get()) {
+                send(RunEvent.Stderr("执行超时（${timeoutMs / 1000}s），进程已被终止。"))
+            }
+            send(RunEvent.Finished(exit, System.currentTimeMillis() - started))
         } finally {
             currentProcess = null
             stdinWriter.set(null)
@@ -224,11 +230,11 @@ class TermuxEngine(private val context: Context) {
         return if (pkg.isNullOrBlank()) simple else "$pkg.$simple"
     }
 
-    /** 逐行读取输入流并在 IO 线程回调 */
-    private fun pump(
+    /** 挂起式逐行读取（在 launch 的 IO 协程内调用，逐行发事件） */
+    private suspend fun pumpLines(
         stream: java.io.InputStream,
-        onLine: (String) -> Unit
-    ): Thread = Thread {
+        onLine: suspend (String) -> Unit
+    ) {
         try {
             BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { reader ->
                 var line = reader.readLine()
@@ -240,5 +246,5 @@ class TermuxEngine(private val context: Context) {
         } catch (_: Exception) {
             // 进程被杀导致的流关闭可忽略
         }
-    }.apply { isDaemon = true; start() }
+    }
 }

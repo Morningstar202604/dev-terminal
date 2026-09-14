@@ -31,6 +31,17 @@
 - **输出面板拖拽调高**（120–560dp），高度持久化
 - **底部状态栏**：Ln/Col、语言、字符数、保存状态
 
+### 构建（v0.3.0 实测产出 APK）
+- **真实构建成功**：纯 Linux 沙盒（无 Android SDK、无 Google 网络）内 `assembleDebug` 出包，
+  产物 47MB debug APK（com.devterminal 0.3.0 / minSdk 24 / targetSdk 34）
+- **内置离线工具链 usrtar.zip**：从 Termux F-Droid 官方 bootstrap（arm64 v1022，sha256 校验）
+  + termux-main 仓库 BFS 解析 17 个依赖包合并而成；Python 3.14.6、bash、coreutils、curl、
+  tar、sqlite 等共 1745 个文件，symlink 全部物化、ELF 依赖静态校验通过
+- **内置语法高亮资源 textmate/**：18 种语言（py/java/kt/js/ts/html/css/json/md/sh/c/cpp/go/
+  rs/sql/yaml/xml/lua）29 个扩展名条目，含 darcula 主题
+- 开启 core library desugaring（language-textmate 0.23.5 要求）
+- 构建镜像化：Gradle 8.9 → 腾讯云；Maven 依赖 → 阿里云；SDK 组件 → 腾讯云 AndroidSDK 镜像
+
 ### 修复
 - 输出面板由固定 260dp 改为可调，长输出不再挤压
 

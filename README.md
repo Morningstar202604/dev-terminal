@@ -366,19 +366,21 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 | M9 | 静态代码补全 + 崩溃日志 + 自检脚本 | ✅ |
 | M10 | 体验对标版：Tab 页 / 符号栏 / 查找替换 / 状态栏 / 会话恢复 / 输出拖高 | ✅ |
 | M11 | 2026 全家桶：命令面板 ⌘K / Git 面板 / AI 助手（BYOK）/ 全局搜索 / 代码片段 | ✅ |
+| M12 | **真实构建出 APK**：国内镜像全链路（腾讯 Gradle/SDK + 阿里云 Maven）+ 内置 28MB 工具链 + 18 语言语法，沙盒内 assembleDebug 成功 | ✅ |
 
 ## 已知限制
 
-- **APK 体积**：含 Python prefix 约 80–120MB，加 JDK 后 400–700MB。不适合走 Google Play，
-  建议 F-Droid / GitHub Releases / 官网直下。
+- **APK 体积**：v0.3.0 debug 包实测 **47MB**（含 28MB 离线 Python 3.14 工具链与
+  18 种语言语法高亮资源），不需要外部存储/下载器。不适合走 Google Play（前台服务
+  specialUse 声明繁琐），建议 F-Droid / GitCode Releases / 官网直下。
 - **Java 仅命令行**：Android 无 X11，OpenJDK 为 headless，无 Swing/JavaFX。
 - **输入行为整行提交**：stdin 按行写入（模拟回车），暂不支持逐字符输入、方向键、
   Tab 补全等终端特性——需要完整 pty。
 - **补全为静态词表**：不做语义分析，因此不能补全 `obj.` 之后的成员（需要 LSP 或类型推断）。
 - **复制 / 粘贴**：编辑器本身依赖系统剪贴板，长按菜单由 SoraEditor 提供。
 - **前台服务为 specialUse 类型**：上架 Google Play 需额外声明用途说明。
-- **沙盒无法出 APK**：本仓库在无 Android SDK 的环境下开发，只做了静态自检；
-  需要 JDK 17 + Android SDK 才能 `assembleDebug`。
+- ~~沙盒无法出 APK~~：**已解决**。通过国内镜像（腾讯 Gradle/SDK + 阿里云 Maven）
+  在纯 Linux 沙盒内真实构建成功，详见下方「镜像构建指南」。
 
 ## 许可证
 
@@ -394,7 +396,25 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 3. UI 改动请先在 `design/mockup.html` 原型里验证效果
 4. Commit 信息用祈使句，如 `Fix stdin deadlock in TermuxEngine`
 
-## 沙盒环境说明
+## 镜像构建指南（无 Android SDK 也能出包）
 
-本项目源码可在任意装了 JDK 17 + Android SDK 的机器上构建。
-在纯 Linux 沙盒（无 Android SDK）中只能做静态检查，无法产出 APK。
+本项目已在 **无 Android SDK 的纯 Linux 沙盒** 内真实构建出 APK（v0.3.0，47MB）。
+构建全程使用国内镜像，无需访问 Google 服务器：
+
+| 组件 | 镜像 |
+|---|---|
+| Gradle 8.9 发行包 | `mirrors.cloud.tencent.com/gradle/`（gradle-wrapper.properties 已指向） |
+| AGP / AndroidX / SoraEditor | `maven.aliyun.com/repository/google` + `/public`（settings.gradle.kts 已配置） |
+| Android SDK platform-34 / build-tools 34 | `mirrors.cloud.tencent.com/AndroidSDK/` |
+| aapt2 / d8 / apksigner | build-tools 内置 Linux x86_64 可执行文件，直接可用 |
+
+离线工具链 `app/src/main/assets/usrtar.zip`（28MB，Python 3.14.6 + bash + coreutils +
+curl + tar 等 1745 个文件）与 `assets/textmate/`（18 种语言语法）**已随仓库提供**，
+clone 后无需任何额外步骤即可构建。
+
+```bash
+# 三行出包（JDK 17+，SDK 位置由 local.properties 的 sdk.dir 指定）
+./gradlew assembleDebug          # 产物：app/build/outputs/apk/debug/app-debug.apk
+```
+
+真机安装后首次启动自动解压工具链（全程不联网），▶ 运行 `print("hello")` 即验证。

@@ -30,8 +30,8 @@ import androidx.compose.ui.unit.sp
 
 /** 一次查找请求：query 为查询词，index 为要跳到的第几个匹配（从 0 计），requestId 每次变化触发执行 */
 data class FindRequest(
-    val query: String,
-    val index: Int,
+    val pos: Int,
+    val length: Int,
     val requestId: Long
 )
 

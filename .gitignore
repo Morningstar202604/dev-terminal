@@ -9,7 +9,5 @@ captures/
 .cxx/
 *.apk
 *.aab
-# 离线工具链（体积大，请用 tools/ 脚本生成，不要提交）
-app/src/main/assets/usrtar.zip
-# SoraEditor 语法配置（从上游复制）
-app/src/main/assets/textmate/
+# 说明：usrtar.zip（28MB 离线工具链）与 textmate/（语法资源）已随仓库提供，
+# clone 后即可离线构建 APK；如需重新生成见 tools/ 脚本。

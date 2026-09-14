@@ -27,6 +27,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // language-textmate 0.23.5 依赖 java.time 等需要 core desugaring
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -51,6 +53,9 @@ android {
 }
 
 dependencies {
+    // core library desugaring（language-textmate 需要 java.time 等 API 脱糖）
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+
     val composeBom = "2024.06.00"
     implementation(platform("androidx.compose:compose-bom:$composeBom"))
     implementation("androidx.compose.ui:ui")

@@ -1,0 +1,88 @@
+{
+	"name": "SQL",
+	"scopeName": "source.sql",
+	"fileTypes": ["sql"],
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"comment": "Keywords (case-insensitive)",
+			"match": "(?i)\\b(select|from|where|insert|into|values|update|set|delete|create|table|database|index|view|drop|alter|add|column|primary|key|foreign|references|unique|not|null|default|constraint|join|inner|left|right|full|outer|cross|on|as|and|or|in|is|like|between|exists|case|when|then|else|end|group|by|order|having|limit|offset|distinct|union|all|asc|desc|if|begin|commit|rollback|transaction|grant|revoke|truncate|with|recursive|partition|over|window|returning|check|auto_increment|autoincrement|trigger|procedure|function|returns|declare|cursor|open|fetch|close|cast|convert|explain|analyze|vacuum|pragma|use|show|describe|rename|to|conflict|replace|ignore|glob|escape|cascade|deferred|immediate|exclusive|without|rowid)\\b",
+			"captures": { "0": { "name": "keyword.other.sql" } }
+		},
+		{
+			"comment": "Types",
+			"match": "(?i)\\b(int|integer|tinyint|smallint|mediumint|bigint|float|double|real|decimal|numeric|char|varchar|nchar|nvarchar|text|tinytext|mediumtext|longtext|blob|date|time|datetime|timestamp|year|boolean|bool|serial|uuid|json|bytea|clob)\\b",
+			"captures": { "0": { "name": "support.type.sql" } }
+		},
+		{
+			"comment": "Numbers",
+			"match": "\\b(0x[0-9A-Fa-f]+|\\d+(\\.\\d+)?)\\b",
+			"captures": { "0": { "name": "constant.numeric.sql" } }
+		},
+		{
+			"comment": "Functions",
+			"match": "(?i)\\b(count|sum|avg|min|max|coalesce|ifnull|nullif|abs|round|length|lower|upper|substr|substring|trim|ltrim|rtrim|replace|concat|now|current_date|current_time|current_timestamp|strftime|julianday|date|time|datetime|random|row_number|rank|dense_rank|first_value|last_value|lag|lead)\\s*(?=\\()",
+			"captures": { "0": { "name": "support.function.sql" } }
+		}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"comment": "Line comment --",
+					"match": "--.*$",
+					"captures": { "0": { "name": "comment.line.double-dash.sql" } }
+				},
+				{
+					"comment": "Line comment #",
+					"match": "#.*$",
+					"captures": { "0": { "name": "comment.line.number-sign.sql" } }
+				},
+				{
+					"comment": "Block comment /* */",
+					"begin": "/\\*",
+					"end": "\\*/",
+					"captures": {
+						"0": { "name": "comment.block.sql" }
+					},
+					"contentName": "comment.block.sql"
+				}
+			]
+		},
+		"strings": {
+			"patterns": [
+				{
+					"comment": "Single-quoted string",
+					"begin": "'",
+					"end": "'",
+					"contentName": "string.quoted.single.sql",
+					"captures": { "0": { "name": "string.quoted.single.sql" } },
+					"patterns": [
+						{
+							"match": "''",
+							"captures": { "0": { "name": "constant.character.escape.sql" } }
+						}
+					]
+				},
+				{
+					"comment": "Double-quoted identifier",
+					"begin": "\"",
+					"end": "\"",
+					"contentName": "string.quoted.double.sql",
+					"captures": { "0": { "name": "string.quoted.double.sql" } },
+					"patterns": [
+						{
+							"match": "\"\"",
+							"captures": { "0": { "name": "constant.character.escape.sql" } }
+						}
+					]
+				}
+			]
+		}
+	}
+}

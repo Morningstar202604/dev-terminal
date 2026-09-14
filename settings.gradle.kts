@@ -1,5 +1,9 @@
 pluginManagement {
     repositories {
+        // 优先使用国内镜像（离线环境可构建），失败时回退官方源
+        maven("https://maven.aliyun.com/repository/google")
+        maven("https://maven.aliyun.com/repository/public")
+        maven("https://maven.aliyun.com/repository/gradle-plugin")
         google()
         mavenCentral()
         gradlePluginPortal()
@@ -9,6 +13,8 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        maven("https://maven.aliyun.com/repository/google")
+        maven("https://maven.aliyun.com/repository/public")
         google()
         mavenCentral()
     }

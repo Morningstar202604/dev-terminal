@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.devterminal.engine.EnvDiagnostics
+import com.devterminal.engine.EnvReport
 import com.devterminal.engine.AiClient
 import com.devterminal.engine.EnvironmentInstaller
 import com.devterminal.engine.ExecutionService
@@ -42,7 +43,7 @@ data class UiState(
     /** 用户待发送的输入内容 */
     val inputDraft: String = "",
     /** 环境自检结果（就绪后可查看） */
-    val diagnostics: EnvDiagnostics? = null,
+    val diagnostics: EnvReport? = null,
     /** 根据报错生成的友好提示 */
     val friendlyHint: String? = null,
     /** 解压进度 0..1，-1 表示不确定 */

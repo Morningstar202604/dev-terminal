@@ -10,7 +10,7 @@ data class ToolStatus(
 )
 
 /** 环境自检汇总 */
-data class EnvDiagnostics(
+data class EnvReport(
     val prefixReady: Boolean,
     val installedSizeBytes: Long,
     val tools: List<ToolStatus>
@@ -46,7 +46,7 @@ object EnvDiagnostics {
     /**
      * 执行诊断。会真实启动进程探测，务必在 IO 线程调用。
      */
-    fun run(installer: EnvironmentInstaller): EnvDiagnostics {
+    fun run(installer: EnvironmentInstaller): EnvReport {
         val ready = installer.isReady
         val size = runCatching {
             if (installer.prefixDir.exists()) installer.prefixDir.walkTopDown()
@@ -62,7 +62,7 @@ object EnvDiagnostics {
                 else -> probe(exe, args, env, label)
             }
         }
-        return EnvDiagnostics(ready, size, tools)
+        return EnvReport(ready, size, tools)
     }
 
     private fun probe(

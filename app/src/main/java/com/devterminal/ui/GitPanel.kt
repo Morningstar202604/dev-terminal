@@ -71,7 +71,7 @@ fun GitPanelDialog(
             Column {
                 if (!gitInstalled) {
                     Text(
-                        "⚠️ 工具链里没有 git 二进制。请重新生成 usrtar.zip（确保 $PREFIX/bin/git 存在）。",
+                        "⚠️ 工具链里没有 git 二进制。请重新生成 usrtar.zip（确保 usr/bin/git 存在）。",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.error
                     )

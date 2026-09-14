@@ -499,8 +499,7 @@ fun EditorScreen(vm: EditorViewModel) {
     if (showPalette) {
         CommandPalette(
             commands = buildCommands(vm, ui,
-                onOpen = { showPalette = false },
-                // 触发对话框的动作要在面板关闭后生效
+                // 触发对话框的动作要在面板关闭后生效（面板点击后已自动 onDismiss）
                 onCommand = { cmd -> when (cmd) {
                     "diag" -> showDiagnostics = true
                     "settings" -> showSettings = true
@@ -901,7 +900,7 @@ private fun FileActionDialog(
 /** 环境自检结果对话框：展示每个工具是否可用 */
 @Composable
 private fun DiagnosticsDialog(
-    diagnostics: com.devterminal.engine.EnvDiagnostics?,
+    diagnostics: com.devterminal.engine.EnvReport?,
     onRefresh: () -> Unit,
     onDismiss: () -> Unit
 ) {

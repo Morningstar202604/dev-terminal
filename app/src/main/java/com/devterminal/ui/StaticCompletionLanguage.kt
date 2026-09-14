@@ -6,6 +6,8 @@ import com.devterminal.engine.Language as DevLanguage
 import io.github.rosemoe.sora.lang.Language
 import io.github.rosemoe.sora.lang.analysis.AnalyzeManager
 import io.github.rosemoe.sora.lang.completion.CompletionItem
+import io.github.rosemoe.sora.lang.completion.CompletionItemKind
+import io.github.rosemoe.sora.lang.completion.SimpleCompletionItem
 import io.github.rosemoe.sora.lang.completion.CompletionPublisher
 import io.github.rosemoe.sora.lang.completion.CompletionHelper
 import io.github.rosemoe.sora.lang.format.Formatter
@@ -57,7 +59,7 @@ class StaticCompletionLanguage(
         if (items.isEmpty()) return
 
         items.forEach { item ->
-            publisher.addItem(item.toCompletionItem())
+            publisher.addItem(item.toCompletionItem(prefix.length))
         }
     }
 
@@ -77,20 +79,22 @@ class StaticCompletionLanguage(
     }
 }
 
-/** 把静态候选转成编辑器可渲染的补全项 */
-private fun CompletionProvider.Item.toCompletionItem(): CompletionItem =
-    object : CompletionItem() {
-        override fun getLabel(): CharSequence = text
+/** 把静态候选转成编辑器可渲染的补全项（0.23.5 SimpleCompletionItem） */
+private fun CompletionProvider.Item.toCompletionItem(prefixLength: Int): CompletionItem =
+    SimpleCompletionItem(
+        text,
+        detail.ifEmpty { kindLabel(kind) },
+        prefixLength,
+        text
+    ).kind(kindToCompletionKind(kind))
 
-        override fun getDesc(): CharSequence =
-            detail.ifEmpty { kindLabel(kind) }
-
-        override fun getCommitText(): CharSequence = text
-
-        override fun getIcon(): android.graphics.drawable.Drawable? = null
-
-        override fun shift(column: Int): CompletionItem = this
-    }
+private fun kindToCompletionKind(kind: CompletionProvider.Kind): CompletionItemKind = when (kind) {
+    CompletionProvider.Kind.KEYWORD -> CompletionItemKind.Keyword
+    CompletionProvider.Kind.BUILTIN -> CompletionItemKind.Function
+    CompletionProvider.Kind.MODULE -> CompletionItemKind.Module
+    CompletionProvider.Kind.CLASS -> CompletionItemKind.Class
+    CompletionProvider.Kind.METHOD -> CompletionItemKind.Method
+}
 
 private fun kindLabel(kind: CompletionProvider.Kind): String = when (kind) {
     CompletionProvider.Kind.KEYWORD -> "关键字"
