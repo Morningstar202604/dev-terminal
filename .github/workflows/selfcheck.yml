@@ -1,0 +1,25 @@
+name: Static Check
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  selfcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run static self-check (no Android SDK needed)
+        run: |
+          python3 tools/selfcheck.py
+      - name: Verify required project files
+        run: |
+          test -f README.md
+          test -f LICENSE
+          test -f NOTICE.md
+          test -f CHANGELOG.md
+          test -f app/src/main/AndroidManifest.xml
+          test -f gradle/wrapper/gradle-wrapper.jar
+          echo "✓ 工程文件完整"

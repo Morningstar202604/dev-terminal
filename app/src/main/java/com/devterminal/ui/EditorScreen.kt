@@ -96,6 +96,7 @@ fun EditorScreen(vm: EditorViewModel) {
     var showGit by remember { mutableStateOf(false) }
     var showAi by remember { mutableStateOf(false) }
     var showGlobalSearch by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     /** 长按文件树后的操作目标 */
     var actionTarget by remember { mutableStateOf<File?>(null) }
     /** 全局搜索关键词 */
@@ -115,6 +116,24 @@ fun EditorScreen(vm: EditorViewModel) {
         ui.message?.let {
             snackbar.showSnackbar(it)
             vm.consumeMessage()
+        }
+    }
+
+    // 切后台 / 系统回收前自动保存：任何已发布编辑器的数据安全底线
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) vm.saveOnBackground()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // 返回键：先关查找条/抽屉，而不是直接退出 App
+    androidx.activity.compose.BackHandler(enabled = ui.findVisible || drawerState.isOpen) {
+        when {
+            ui.findVisible -> vm.showFind(false)
+            drawerState.isOpen -> scope.launch { drawerState.close() }
         }
     }
 
@@ -397,6 +416,13 @@ fun EditorScreen(vm: EditorViewModel) {
                         length = ui.findQuery.length,
                         requestId = ui.findRequestId
                     ) else null,
+                    onPinchZoom = { dir ->
+                        // 双指捏合调整字号（10–24 sp），实时持久化
+                        val next = (ui.settings.editorFontSize + dir).coerceIn(10, 24)
+                        if (next != ui.settings.editorFontSize) {
+                            vm.updateSettings(ui.settings.copy(editorFontSize = next))
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth().weight(1f)
                 )
                 // 快捷符号栏：手机键盘打符号太费劲
@@ -437,6 +463,17 @@ fun EditorScreen(vm: EditorViewModel) {
                     onInputSend = { vm.sendInput(ui.inputDraft) },
                     onClear = vm::clearOutput,
                     onRerun = vm::runCurrent,
+                    onShare = {
+                        // 通过系统分享把运行结果发出去（聊天/笔记/Issue 都方便）
+                        val text = ui.output.joinToString("\n")
+                        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_TEXT, text)
+                        }
+                        runCatching {
+                            context.startActivity(android.content.Intent.createChooser(intent, "分享运行结果"))
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth().height(outputHeight.dp)
                 )
                 // 底部状态栏：光标位置 / 语言 / 保存状态
@@ -473,6 +510,7 @@ fun EditorScreen(vm: EditorViewModel) {
                     "ai" -> showAi = true
                     "gsearch" -> showGlobalSearch = true
                     "runconfig" -> showRunConfig = true
+                    "export" -> exportLauncher.launch(vm.suggestedExportName())
                 } }
             ),
             onDismiss = { showPalette = false }
@@ -484,6 +522,9 @@ fun EditorScreen(vm: EditorViewModel) {
             status = ui.gitStatus,
             busy = ui.gitBusy,
             lastResult = ui.gitLastResult,
+            gitInstalled = remember { com.devterminal.engine.GitManager(
+                com.devterminal.engine.EnvironmentInstaller(context)
+            ).isGitInstalled() },
             gitName = ui.settings.gitUserName,
             gitEmail = ui.settings.gitUserEmail,
             remoteUrl = ui.settings.gitRemoteUrl,

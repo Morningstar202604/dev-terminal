@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,6 +46,7 @@ fun OutputPanel(
     onInputSend: () -> Unit,
     onClear: () -> Unit,
     onRerun: () -> Unit,
+    onShare: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val scroll = rememberScrollState()
@@ -69,6 +71,12 @@ fun OutputPanel(
             )
             DbStatusBadge(running, exitCode)
             Box(Modifier.weight(1f))
+            if (onShare != null && output.isNotEmpty()) {
+                IconButton(onClick = onShare) {
+                    Icon(Icons.Filled.Share, contentDescription = "分享输出",
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                }
+            }
             IconButton(onClick = onRerun) {
                 Icon(Icons.Filled.PlayArrow, contentDescription = "重新运行",
                     tint = MaterialTheme.colorScheme.primary)

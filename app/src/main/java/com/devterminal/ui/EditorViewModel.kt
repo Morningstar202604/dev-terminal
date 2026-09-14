@@ -292,13 +292,20 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         _ui.value = st.copy(editorText = newText, dirty = true)
     }
 
-    fun save() {
+    fun save(saveMessage: Boolean = true) {
         val st = _ui.value
         val file = st.currentFile ?: return
         viewModelScope.launch {
             withContext(Dispatchers.IO) { projects.write(file.absolutePath, st.editorText) }
-            _ui.value = st.copy(dirty = false, message = "已保存 ${file.name}")
+            _ui.value = if (saveMessage) st.copy(dirty = false, message = "已保存 ${file.name}")
+                        else st.copy(dirty = false)
         }
+    }
+
+    /** 切后台 / 系统回收前静默落盘（对标已发布编辑器的数据安全底线） */
+    fun saveOnBackground() {
+        val st = _ui.value
+        if (st.dirty && st.currentFile != null) save(saveMessage = false)
     }
 
     // ---------- 运行 ----------

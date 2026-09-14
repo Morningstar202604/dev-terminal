@@ -1,6 +1,7 @@
 package com.devterminal.ui
 
 import android.view.KeyEvent
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme
@@ -11,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.viewinterop.AndroidView
 import com.devterminal.engine.Language as DevLanguage
@@ -57,7 +59,9 @@ fun CodeEditorView(
     /** 每次自增触发一次退格 */
     backspaceSignal: Long = 0,
     /** 查找跳转请求：pos 为全局字符偏移，requestId 变化即执行 */
-    findRequest: FindRequest? = null
+    findRequest: FindRequest? = null,
+    /** 双指缩放调整字号（zoom 增量，累积到阈值回调一次） */
+    onPinchZoom: ((Float) -> Unit)? = null
 ) {
     val context = LocalContext.current
 
@@ -117,7 +121,18 @@ fun CodeEditorView(
     }
 
     AndroidView(
-        modifier = modifier,
+        modifier = modifier.pointerInput(onPinchZoom) {
+            if (onPinchZoom == null) return@pointerInput
+            // 双指捏合调整字号：累积增量达到阈值才回调，避免字号抖动
+            var pending = 0f
+            detectTransformGestures { _, _, zoom, _ ->
+                if (zoom != 1f) {
+                    pending += (zoom - 1f)
+                    if (pending > 0.14f) { onPinchZoom(1); pending = 0f }
+                    else if (pending < -0.14f) { onPinchZoom(-1); pending = 0f }
+                }
+            }
+        },
         factory = {
             editor.apply {
                 setText(text)
