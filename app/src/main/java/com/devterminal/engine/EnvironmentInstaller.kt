@@ -38,7 +38,7 @@ class EnvironmentInstaller(private val context: Context) {
                 "HOME" to home.absolutePath,
                 "TMPDIR" to tmp.absolutePath,
                 "PATH" to path,
-                "LD_LIBRARY_PATH" to "$prefix/lib",
+                "LD_LIBRARY_PATH" to "$prefix/lib:$prefix/lib/server",
                 "LANG" to "en_US.UTF-8",
                 "TERM" to "xterm-256color",
                 // ncurses 默认 terminfo 路径硬编码为 termux 官方 prefix，这里显式指定
@@ -47,6 +47,9 @@ class EnvironmentInstaller(private val context: Context) {
                 // Python 相关
                 "PYTHONHOME" to prefix.absolutePath,
                 "PYTHONPATH" to "$prefix/lib/python3.14",
+                // Java：动态定位 JDK home（lib/jvm 下的首个子目录，如 java-17-openjdk）
+                "JAVA_HOME" to (File(prefix, "lib/jvm").listFiles()
+                    ?.firstOrNull { it.isDirectory }?.absolutePath ?: prefix.absolutePath),
                 // 告诉子进程不要再往系统目录写缓存
                 "TMP" to tmp.absolutePath
             )
