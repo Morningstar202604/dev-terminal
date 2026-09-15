@@ -56,7 +56,11 @@ class GitManager(private val installer: EnvironmentInstaller) {
             when {
                 line.startsWith("##") -> branch = line.removePrefix("##").trim()
                     .substringBefore("...").ifBlank { "main" }
-                line.length >= 4 -> changes.add(Change(line.take(2).trim(), line.substring(3)))
+                // porcelain 格式：XY PATH。路径含空格/中文时 git 会加引号并转义，
+                // 不还原的话用户看到的是 "新增 文件.py" 这种带引号的名字。
+                line.length >= 4 -> changes.add(
+                    Change(line.take(2).trim(), unquotePath(line.substring(3)))
+                )
             }
         }
         // 最近提交
@@ -104,6 +108,13 @@ class GitManager(private val installer: EnvironmentInstaller) {
         if (remoteUrl.isBlank()) return "请先在面板里配置远程仓库地址"
         val (code, out) = git(dir, 90, listOf("pull", remoteUrl))
         return if (code == 0) "拉取成功" else friendly(out)
+    }
+
+    /** 去掉 git porcelain 给路径加的引号（含中文/空格时出现） */
+    private fun unquotePath(raw: String): String {
+        val trimmed = raw.trim()
+        if (!trimmed.startsWith("\"") || !trimmed.endsWith("\"") || trimmed.length < 2) return trimmed
+        return trimmed.substring(1, trimmed.length - 1)
     }
 
     /** 把 git 报错翻译成可操作的建议 */

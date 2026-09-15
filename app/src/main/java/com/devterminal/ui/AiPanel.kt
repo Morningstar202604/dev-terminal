@@ -2,21 +2,17 @@ package com.devterminal.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -24,20 +20,30 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.devterminal.engine.AiClient
+import com.devterminal.ui.components.MonoText
+import com.devterminal.ui.components.QuietDialog
+import com.devterminal.ui.components.QuietHint
+import com.devterminal.ui.components.QuietTextField
+import com.devterminal.ui.theme.Dimens
+import com.devterminal.ui.theme.faint
+import com.devterminal.ui.theme.muted
 
 /**
  * AI 助手面板：BYOK + 本地端点优先（2026 移动端 AI 编程的主流形态）。
  *
  * 四个快捷动作：解释此文件 / 修复运行错误 / 生成测试 / 添加注释。
  * 未配置端点时显示引导而不是空白。
+ *
+ * 视觉重构：气泡从「实心色块」改为 4% / 8% 的极淡底色 + 14dp 圆角，
+ * 靠左右对齐和字号区分角色，不再靠颜色；快捷动作改为描边细条。
  */
+private val QUICK_ACTIONS = listOf(
+    "解释此文件", "修复运行错误", "生成测试", "加注释"
+)
+
 @Composable
 fun AiPanelDialog(
     messages: List<AiClient.ChatMessage>,
@@ -57,94 +63,77 @@ fun AiPanelDialog(
         }
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("AI 助手") },
-        text = {
-            Column(Modifier.fillMaxWidth()) {
-                if (!configured) {
-                    Text(
-                        "AI 助手未配置。默认端点是本机 Ollama（127.0.0.1:11434），" +
-                            "也可以在设置里填任何 OpenAI 兼容端点。",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+    QuietDialog(
+        onDismiss = onDismiss,
+        title = "AI 助手",
+        confirmLabel = "发送",
+        onConfirm = if (inputDraft.isNotBlank() && !busy) onSend else null
+    ) {
+        if (!configured) {
+            QuietHint(
+                "未配置端点。默认是本机 Ollama（127.0.0.1:11434），" +
+                    "也可以在设置里填任何 OpenAI 兼容端点。不配置也不影响其他功能，App 依然完全离线。"
+            )
+        } else {
+            Box(Modifier.fillMaxWidth().height(260.dp)) {
+                if (messages.isEmpty() && !busy) {
+                    QuietHint(
+                        "问我任何关于当前文件的问题，或用下面的快捷动作",
+                        modifier = Modifier.align(Alignment.Center)
                     )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "不配置也不影响其他功能，App 依然完全离线。",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
-                } else {
-                    // 对话区
-                    Box(Modifier.fillMaxWidth().height(280.dp)) {
-                        if (messages.isEmpty() && !busy) {
-                            Column(Modifier.align(Alignment.Center)) {
-                                Text(
-                                    "问我任何关于当前文件的问题，或点下面的快捷动作",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                                )
-                            }
-                        }
-                        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
-                            items(messages) { m ->
-                                Bubble(m)
-                                Spacer(Modifier.height(6.dp))
-                            }
-                            if (busy) {
-                                item {
-                                    Text(
-                                        "AI 思考中…",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.secondary
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    // 快捷动作
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        listOf(
-                            "解释此文件" to "解释当前文件的代码逻辑",
-                            "修复运行错误" to "修复最近的运行报错",
-                            "生成测试" to "为当前文件生成单元测试",
-                            "加注释" to "给当前文件的函数加上注释"
-                        ).forEach { (label, _) ->
-                            TextButton(
-                                onClick = { onQuick(label) },
-                                enabled = !busy,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(label, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-                    }
                 }
-                Spacer(Modifier.height(4.dp))
-                // 输入行
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = inputDraft,
-                        onValueChange = onInputChange,
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("问点什么…", fontSize = 12.sp) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send)
-                    )
-                    TextButton(onClick = onSend, enabled = !busy && inputDraft.isNotBlank()) {
-                        Text("发送")
+                LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
+                    items(messages) { m ->
+                        Bubble(m)
+                        Spacer(Modifier.height(Dimens.sm))
+                    }
+                    if (busy) {
+                        item {
+                            MonoText(
+                                "AI 思考中…",
+                                fontSize = 11,
+                                color = MaterialTheme.colorScheme.muted,
+                                modifier = Modifier.padding(vertical = Dimens.xs)
+                            )
+                        }
                     }
                 }
             }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
-    )
+            Spacer(Modifier.height(Dimens.sm))
+            // 快捷动作：等宽细条，横排等分
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Dimens.xs)
+            ) {
+                QUICK_ACTIONS.forEach { label ->
+                    TextButton(
+                        onClick = { onQuick(label) },
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            color = if (busy) MaterialTheme.colorScheme.faint
+                            else MaterialTheme.colorScheme.muted
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(Dimens.sm))
+        QuietTextField(
+            value = inputDraft,
+            onValueChange = onInputChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = "问点什么…",
+            mono = false,
+            enabled = !busy,
+            imeAction = ImeAction.Send,
+            onImeAction = { if (inputDraft.isNotBlank() && !busy) onSend() }
+        )
+    }
 }
 
 @Composable
@@ -155,21 +144,28 @@ private fun Bubble(m: AiClient.ChatMessage) {
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
     ) {
         Surface(
-            color = if (isUser) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                    else MaterialTheme.colorScheme.surfaceVariant,
+            color = if (isUser) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
             shape = RoundedCornerShape(
-                topStart = 10.dp, topEnd = 10.dp,
-                bottomStart = if (isUser) 10.dp else 2.dp,
-                bottomEnd = if (isUser) 2.dp else 10.dp
+                topStart = 14.dp, topEnd = 14.dp,
+                bottomStart = if (isUser) 14.dp else 4.dp,
+                bottomEnd = if (isUser) 4.dp else 14.dp
             ),
-            modifier = Modifier.widthIn(max = 280.dp)
+            modifier = Modifier.widthIn(max = 290.dp)
         ) {
-            Text(
-                m.content,
-                fontSize = 12.sp,
-                fontFamily = if (isUser) FontFamily.Default else FontFamily.Monospace,
-                modifier = Modifier.padding(8.dp)
-            )
+            if (isUser) {
+                Text(
+                    m.content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)
+                )
+            } else {
+                MonoText(
+                    m.content,
+                    fontSize = 12,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)
+                )
+            }
         }
     }
 }

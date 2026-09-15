@@ -21,11 +21,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
 enum class EnvState { PREPARING, READY, ERROR }
+
+/** 输出面板最多保留的行数：死循环式输出若不加闸，几秒就能把内存吃干 */
+private const val MAX_OUTPUT_LINES = 3000
+
+/** 遍历项目时要跳过的噪音目录（既无意义又拖慢速度） */
+private val WALK_EXCLUDED = setOf(".git", "build", "__pycache__", "node_modules", ".gradle", ".idea")
 
 data class UiState(
     val envState: EnvState = EnvState.PREPARING,
@@ -38,6 +45,11 @@ data class UiState(
     val running: Boolean = false,
     val exitCode: Int? = null,
     val message: String? = null,
+    /**
+     * 提示序号：内容相同的两条消息（例如连续两次「已保存」）也能各自弹出一次。
+     * 只以 message 做 LaunchedEffect 的 key 时，第二条会被判为「无变化」而吞掉。
+     */
+    val messageSeq: Long = 0,
     /** 是否显示交互输入行（运行中且进程可接收输入） */
     val inputVisible: Boolean = false,
     /** 用户待发送的输入内容 */
@@ -56,6 +68,10 @@ data class UiState(
     val settings: com.devterminal.settings.AppSettings = com.devterminal.settings.AppSettings(),
     /** 顶部打开的文件 Tab 列表 */
     val openTabs: List<File> = emptyList(),
+    /** 当前文件的语言名（状态栏显示用，按扩展名识别而非写死两种） */
+    val languageLabel: String = "Python",
+    /** 工具链里是否带了 git 二进制（初始化时探一次，避免在主线程做 IO） */
+    val gitInstalled: Boolean = false,
     // ---------- 查找 / 替换 ----------
     val findVisible: Boolean = false,
     val findQuery: String = "",
@@ -117,50 +133,56 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                     installer.ensureDirs()
                     engine.prepareEnvironment { done, total ->
                         val pct = if (total > 0) (done * 100 / total).toInt() else 0
-                        _ui.value = _ui.value.copy(
+                        _ui.update { it.copy(
                             envMessage = "正在解压离线工具链… $pct%",
                             installProgress = if (total > 0) done.toFloat() / total else -1f
-                        )
+                        ) }
                     }
                 }.isSuccess
             }
             if (!ok) {
-                _ui.value = _ui.value.copy(
+                _ui.update { it.copy(
                     envState = EnvState.ERROR,
                     envMessage = "离线工具链解压失败",
-                    message = "请检查 assets/usrtar.zip 是否已打包"
-                )
+                    message = "请检查 assets/usrtar.zip 是否已打包",
+                    messageSeq = it.messageSeq + 1
+                ) }
                 return@launch
             }
+            // git 是否存在只与工具链有关，环境就绪后探一次即可
+            val hasGit = withContext(Dispatchers.IO) { git.isGitInstalled() }
             if (engine.isEnvironmentReady) {
-                _ui.value = _ui.value.copy(
+                _ui.update { it.copy(
                     envState = EnvState.READY,
                     envMessage = "离线环境就绪",
                     installProgress = -1f,
+                    gitInstalled = hasGit,
                     output = listOf("[DevTerminal] 离线运行环境已就绪，全程无需联网。")
-                )
+                ) }
                 restoreSession()
                 // 后台跑一次自检，不阻塞用户开始写代码
                 runDiagnostics()
             } else {
-                _ui.value = _ui.value.copy(
+                _ui.update { it.copy(
                     envState = EnvState.ERROR,
                     envMessage = "未找到内置工具链",
                     installProgress = -1f,
-                    message = "缺少 assets/usrtar.zip，请先按 README 生成离线工具链"
-                )
+                    gitInstalled = hasGit,
+                    message = "缺少 assets/usrtar.zip，请先按 README 生成离线工具链",
+                    messageSeq = it.messageSeq + 1
+                ) }
             }
         }
     }
 
     /** 重新尝试初始化环境（用户在引导页点「重试」时调用） */
     fun retryPrepare() {
-        _ui.value = _ui.value.copy(
+        _ui.update { it.copy(
             envState = EnvState.PREPARING,
             envMessage = "正在重新检查离线环境…",
             installProgress = -1f,
             message = null
-        )
+        ) }
         prepareEnvironment()
     }
 
@@ -168,10 +190,11 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun runDiagnostics() {
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) { EnvDiagnostics.run(installer) }
-            _ui.value = _ui.value.copy(
+            _ui.update { it.copy(
                 diagnostics = result,
-                message = result.summary() + "（" + EnvDiagnostics.formatSize(result.installedSizeBytes) + "）"
-            )
+                message = result.summary() + "（" + EnvDiagnostics.formatSize(result.installedSizeBytes) + "）",
+                messageSeq = it.messageSeq + 1
+            ) }
         }
     }
 
@@ -199,7 +222,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             val tabs = snap.tabPaths.map { File(it) }.filter { it.isFile }
             val active = snap.filePath?.let { File(it) }?.takeIf { it.isFile && tabs.contains(it) }
                 ?: tabs.firstOrNull()
-            _ui.value = _ui.value.copy(openTabs = tabs)
+            _ui.update { it.copy(openTabs = tabs) }
             if (active != null) {
                 doOpenFile(active, restore = true)
             }
@@ -229,19 +252,18 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         // 递归遍历目录属于阻塞 IO，放到后台线程
         viewModelScope.launch {
             val tree = withContext(Dispatchers.IO) { projects.buildTree(dir) }
-            _ui.value = _ui.value.copy(tree = tree)
+            _ui.update { it.copy(tree = tree) }
         }
     }
 
     fun openFile(file: File) {
         if (file.isDirectory) return
         val st = _ui.value
+        val previous = st.currentFile
         // 自动保存：切走前先落盘，避免改动丢失
-        if (st.settings.autoSave && st.dirty && st.currentFile != null) {
+        if (st.settings.autoSave && st.dirty && previous != null) {
             viewModelScope.launch {
-                withContext(Dispatchers.IO) {
-                    projects.write(st.currentFile!!.absolutePath, st.editorText)
-                }
+                withContext(Dispatchers.IO) { projects.write(previous.absolutePath, st.editorText) }
                 doOpenFile(file)
             }
         } else {
@@ -252,15 +274,18 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     private fun doOpenFile(file: File, restore: Boolean = false) {
         viewModelScope.launch {
             val content = withContext(Dispatchers.IO) { projects.read(file.absolutePath) }
-            _ui.value = _ui.value.copy(
-                currentFile = file,
-                editorText = content,
-                dirty = false,
-                // 打开新文件自动挂到 Tab 条上（已打开的不重复加）
-                openTabs = _ui.value.openTabs.let { tabs ->
-                    if (tabs.any { it.absolutePath == file.absolutePath }) tabs else tabs + file
-                }
-            )
+            _ui.update { st ->
+                st.copy(
+                    currentFile = file,
+                    editorText = content,
+                    dirty = false,
+                    languageLabel = languageLabelOf(file),
+                    // 打开新文件自动挂到 Tab 条上（已打开的不重复加）
+                    openTabs = st.openTabs.let { tabs ->
+                        if (tabs.any { it.absolutePath == file.absolutePath }) tabs else tabs + file
+                    }
+                )
+            }
             if (!restore) saveSession()
         }
     }
@@ -274,23 +299,24 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         if (st.currentFile?.absolutePath == file.absolutePath) {
             // 保存后切到相邻 Tab（优先右边，其次左边），没有就清空编辑器
             val next = newTabs.getOrNull(idx) ?: newTabs.getOrNull(idx - 1)
-            _ui.value = st.copy(openTabs = newTabs)
+            _ui.update { it.copy(openTabs = newTabs) }
             if (next != null) {
                 doOpenFile(next)
             } else {
-                _ui.value = _ui.value.copy(currentFile = null, editorText = "", dirty = false)
+                _ui.update { it.copy(currentFile = null, editorText = "", dirty = false) }
                 saveSession()
             }
         } else {
-            _ui.value = st.copy(openTabs = newTabs)
+            _ui.update { it.copy(openTabs = newTabs) }
             saveSession()
         }
     }
 
     fun onEditorChanged(newText: String) {
-        val st = _ui.value
-        if (st.editorText == newText) return
-        _ui.value = st.copy(editorText = newText, dirty = true)
+        // 用 update 做原子读改写：并发协程下不会互相覆盖
+        _ui.update { st ->
+            if (st.editorText == newText) st else st.copy(editorText = newText, dirty = true)
+        }
     }
 
     fun save(saveMessage: Boolean = true) {
@@ -298,8 +324,11 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val file = st.currentFile ?: return
         viewModelScope.launch {
             withContext(Dispatchers.IO) { projects.write(file.absolutePath, st.editorText) }
-            _ui.value = if (saveMessage) st.copy(dirty = false, message = "已保存 ${file.name}")
-                        else st.copy(dirty = false)
+            _ui.update {
+                if (saveMessage) it.copy(dirty = false, message = "已保存 ${file.name}",
+                    messageSeq = it.messageSeq + 1)
+                else it.copy(dirty = false)
+            }
         }
     }
 
@@ -316,14 +345,14 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         // 防止重复点击导致多个进程并发、输出互相穿插
         if (st.running) return
         val file = st.currentFile ?: run {
-            _ui.value = st.copy(message = "请先打开一个文件")
+            _ui.update { it.copy(message = "请先打开一个文件", messageSeq = it.messageSeq + 1) }
             return
         }
         // 运行前自动保存，保证跑的是最新代码
         if (st.dirty) {
             viewModelScope.launch {
                 withContext(Dispatchers.IO) { projects.write(file.absolutePath, st.editorText) }
-                _ui.value = _ui.value.copy(dirty = false)
+                _ui.update { it.copy(dirty = false) }
                 launchRun(file)
             }
         } else {
@@ -334,11 +363,11 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     private fun launchRun(file: File) {
         val language = inferLanguage(file)
         val projectDir = currentProject ?: file.parentFile ?: file
-        _ui.value = _ui.value.copy(
+        _ui.update { it.copy(
             running = true, output = emptyList(), exitCode = null,
             inputVisible = true, inputDraft = "", friendlyHint = null,
-            message = "运行 ${file.name} …"
-        )
+            message = "运行 ${file.name} …", messageSeq = it.messageSeq + 1
+        ) }
         // 提升为前台服务，避免 Android 12+ 在后台把进程杀掉
         runCatching { ExecutionService.start(context, "正在运行 ${file.name}") }
         viewModelScope.launch {
@@ -354,37 +383,42 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 // 超时时长来自用户设置
                 timeoutMs = _ui.value.settings.timeoutSeconds * 1000L
             ).collect { event ->
-                val st = _ui.value
-                _ui.value = when (event) {
-                    is RunEvent.Started -> st.copy(
-                        output = st.output + "[执行] ${event.command}"
-                    )
-                    is RunEvent.Stdout -> st.copy(output = st.output + event.line)
-                    is RunEvent.Stderr -> st.copy(output = st.output + "[err] ${event.line}")
-                    is RunEvent.Finished -> {
-                        // 非零退出时，尝试把报错翻译成人话
-                        val hint = if (event.exitCode != 0) FriendlyError.hint(st.output) else null
-                        st.copy(
-                            running = false,
-                            exitCode = event.exitCode,
-                            inputVisible = false,
-                            friendlyHint = hint,
-                            output = st.output +
-                                "—— 进程结束，退出码 ${event.exitCode}（${event.durationMs} ms）——" +
-                                (hint?.let { listOf("", "💡 $it") } ?: emptyList()),
-                            message = if (event.exitCode == 0) "运行成功" else "运行出错，见下方提示"
-                        )
-                    }
-                    is RunEvent.Failed -> {
-                        val hint = FriendlyError.hint(listOf(event.message))
-                        st.copy(
-                            running = false,
-                            inputVisible = false,
-                            output = st.output + "[启动失败] ${event.message}" +
-                                (hint?.let { listOf("", "💡 $it") } ?: emptyList()),
-                            friendlyHint = hint,
-                            message = event.message
-                        )
+                _ui.update { st ->
+                    when (event) {
+                        is RunEvent.Started -> st.copy(output = appendLines(st.output, "[执行] ${event.command}"))
+                        is RunEvent.Stdout -> st.copy(output = appendLines(st.output, event.line))
+                        is RunEvent.Stderr -> st.copy(output = appendLines(st.output, "[err] ${event.line}"))
+                        is RunEvent.Finished -> {
+                            // 非零退出时，尝试把报错翻译成人话
+                            val hint = if (event.exitCode != 0) FriendlyError.hint(st.output) else null
+                            st.copy(
+                                running = false,
+                                exitCode = event.exitCode,
+                                inputVisible = false,
+                                friendlyHint = hint,
+                                output = appendLines(
+                                    st.output,
+                                    "—— 进程结束，退出码 ${event.exitCode}（${event.durationMs} ms）——",
+                                    *(hint?.let { arrayOf("", "💡 $it") } ?: emptyArray())
+                                ),
+                                message = if (event.exitCode == 0) "运行成功" else "运行出错，见下方提示",
+                                messageSeq = st.messageSeq + 1
+                            )
+                        }
+                        is RunEvent.Failed -> {
+                            val hint = FriendlyError.hint(listOf(event.message))
+                            st.copy(
+                                running = false,
+                                inputVisible = false,
+                                output = appendLines(
+                                    st.output, "[启动失败] ${event.message}",
+                                    *(hint?.let { arrayOf("", "💡 $it") } ?: emptyArray())
+                                ),
+                                friendlyHint = hint,
+                                message = event.message,
+                                messageSeq = st.messageSeq + 1
+                            )
+                        }
                     }
                 }
             }
@@ -393,41 +427,59 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 向运行中的进程发送一行输入（支持 Python 的 input() 交互） */
+    /** 追加输出行并守住行数上限，避免死循环输出把内存打满 */
+    private fun appendLines(current: List<String>, vararg lines: String): List<String> {
+        val merged = current + lines
+        return if (merged.size <= MAX_OUTPUT_LINES) merged
+        else merged.takeLast(MAX_OUTPUT_LINES)
+    }
+
+    /**
+     * 向运行中的进程发送一行输入（支持 Python 的 input() 交互）。
+     * 写管道可能阻塞，因此整体切到 IO 线程，绝不卡主线程。
+     */
     fun sendInput(text: String) {
         val st = _ui.value
         if (!st.running) return
-        if (engine.writeStdin(text)) {
-            // 把用户输入回显到输出，模仿终端行为
-            _ui.value = st.copy(output = st.output + text, inputDraft = "")
-        } else {
-            _ui.value = st.copy(message = "当前进程不接受输入")
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) { engine.writeStdin(text) }
+            _ui.update {
+                if (ok) it.copy(output = appendLines(it.output, text), inputDraft = "")
+                else it.copy(message = "当前进程不接受输入", messageSeq = it.messageSeq + 1)
+            }
         }
     }
 
     /** 发送 EOF（等价 Ctrl-D） */
     fun sendEof() {
         if (!_ui.value.running) return
-        engine.closeStdin()
-        _ui.value = _ui.value.copy(message = "已发送 EOF")
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { engine.closeStdin() }
+            _ui.update { it.copy(message = "已发送 EOF", messageSeq = it.messageSeq + 1) }
+        }
     }
 
     fun stopRun() {
-        engine.stop()
-        runCatching { ExecutionService.stop(context) }
-        _ui.value = _ui.value.copy(running = false, inputVisible = false, message = "已停止运行")
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { engine.stop() }
+            runCatching { ExecutionService.stop(context) }
+            _ui.update {
+                it.copy(running = false, inputVisible = false, message = "已停止运行",
+                    messageSeq = it.messageSeq + 1)
+            }
+        }
     }
 
     fun onInputDraftChanged(text: String) {
-        _ui.value = _ui.value.copy(inputDraft = text)
+        _ui.update { it.copy(inputDraft = text) }
     }
 
     fun onRunArgsChanged(text: String) {
-        _ui.value = _ui.value.copy(runArgs = text)
+        _ui.update { it.copy(runArgs = text) }
     }
 
     fun onMainClassChanged(text: String) {
-        _ui.value = _ui.value.copy(mainClass = text)
+        _ui.update { it.copy(mainClass = text) }
     }
 
     /**
@@ -457,10 +509,10 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val dir = withContext(Dispatchers.IO) { projects.createFromTemplate(tpl) }
             openProject(dir)
-            _ui.value = _ui.value.copy(
-                openTabs = emptyList(),
-                message = "已创建项目 ${dir.name}"
-            )
+            _ui.update {
+                it.copy(openTabs = emptyList(), message = "已创建项目 ${dir.name}",
+                    messageSeq = it.messageSeq + 1)
+            }
             // 新项目自动打开主文件
             val main = withContext(Dispatchers.IO) {
                 dir.walkTopDown().filter { it.isFile && it.extension in listOf("py", "java") }.firstOrNull()
@@ -481,17 +533,18 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteFile(file: File) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { projects.delete(file) }
-            val st = _ui.value
-            if (st.currentFile?.path == file.path) {
-                _ui.value = st.copy(currentFile = null, editorText = "")
+            _ui.update { st ->
+                st.copy(
+                    currentFile = st.currentFile?.takeUnless { it.path == file.path },
+                    editorText = if (st.currentFile?.path == file.path) "" else st.editorText,
+                    // 从 Tab 条同步移除
+                    openTabs = st.openTabs.filterNot { it.absolutePath == file.absolutePath },
+                    message = "已删除 ${file.name}",
+                    messageSeq = st.messageSeq + 1
+                )
             }
-            // 从 Tab 条同步移除
-            _ui.value = _ui.value.copy(
-                openTabs = _ui.value.openTabs.filterNot { it.absolutePath == file.absolutePath }
-            )
             refreshTree()
             saveSession()
-            _ui.value = _ui.value.copy(message = "已删除 ${file.name}")
         }
     }
 
@@ -499,33 +552,38 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val renamed = withContext(Dispatchers.IO) { projects.rename(file, newName) }
             if (renamed == null) {
-                _ui.value = _ui.value.copy(message = "重命名失败：名称已存在或非法")
+                _ui.update { it.copy(message = "重命名失败：名称已存在或非法", messageSeq = it.messageSeq + 1) }
             } else {
                 val st = _ui.value
                 if (st.currentFile?.path == file.path) {
                     doOpenFile(renamed)
                 }
                 // 同步 Tab 列表里的旧路径
-                _ui.value = _ui.value.copy(
-                    openTabs = _ui.value.openTabs.map {
-                        if (it.absolutePath == file.absolutePath) renamed else it
-                    }
-                )
+                _ui.update {
+                    it.copy(
+                        openTabs = it.openTabs.map { t ->
+                            if (t.absolutePath == file.absolutePath) renamed else t
+                        },
+                        message = "已重命名为 ${renamed.name}",
+                        messageSeq = it.messageSeq + 1
+                    )
+                }
                 refreshTree()
                 saveSession()
-                _ui.value = _ui.value.copy(message = "已重命名为 ${renamed.name}")
             }
         }
     }
 
-    fun clearOutput() { _ui.value = _ui.value.copy(output = emptyList(), exitCode = null, friendlyHint = null) }
+    fun clearOutput() {
+        _ui.update { it.copy(output = emptyList(), exitCode = null, friendlyHint = null) }
+    }
 
-    fun consumeMessage() { _ui.value = _ui.value.copy(message = null) }
+    fun consumeMessage() { _ui.update { it.copy(message = null) } }
 
     /** 更新设置并持久化 */
     fun updateSettings(newSettings: com.devterminal.settings.AppSettings) {
         settingsStore.save(newSettings)
-        _ui.value = _ui.value.copy(settings = newSettings)
+        _ui.update { it.copy(settings = newSettings) }
     }
 
     /** 拖拽结束后记录输出面板高度（拖动过程走 UI 本地状态，结束才落盘） */
@@ -538,89 +596,90 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 编辑器光标变化（行、列，从 0 计） */
     fun onCursorChanged(line: Int, column: Int) {
-        _ui.value = _ui.value.copy(cursorLine = line + 1, cursorColumn = column + 1)
+        _ui.update { it.copy(cursorLine = line + 1, cursorColumn = column + 1) }
     }
 
     // ---------- 符号栏 ----------
 
     /** 在光标处插入一段文本（符号 / Tab） */
     fun insertSymbol(text: String) {
-        val st = _ui.value
-        _ui.value = st.copy(insertSignal = st.insertSignal + 1, insertText = text)
+        _ui.update { st -> st.copy(insertSignal = st.insertSignal + 1, insertText = text) }
     }
 
     /** 光标处退格 */
     fun backspaceSymbol() {
-        val st = _ui.value
-        _ui.value = st.copy(backspaceSignal = st.backspaceSignal + 1)
+        _ui.update { st -> st.copy(backspaceSignal = st.backspaceSignal + 1) }
     }
 
     // ---------- 查找 / 替换 ----------
 
     fun showFind(show: Boolean) {
-        _ui.value = _ui.value.copy(findVisible = show)
-        if (!show) {
-            _ui.value = _ui.value.copy(
-                findVisible = false, findMatches = emptyList(), findIndex = 0, findQuery = ""
-            )
+        _ui.update {
+            if (show) it.copy(findVisible = true)
+            else it.copy(findVisible = false, findMatches = emptyList(), findIndex = 0, findQuery = "")
         }
     }
 
     fun onFindQueryChanged(query: String) {
-        val st = _ui.value
-        val matches = computeMatches(st.editorText, query)
-        _ui.value = st.copy(
-            findQuery = query,
-            findMatches = matches,
-            findIndex = 0,
-            findRequestId = if (matches.isNotEmpty()) st.findRequestId + 1 else st.findRequestId
-        )
+        _ui.update { st ->
+            val matches = computeMatches(st.editorText, query)
+            st.copy(
+                findQuery = query,
+                findMatches = matches,
+                findIndex = 0,
+                findRequestId = if (matches.isNotEmpty()) st.findRequestId + 1 else st.findRequestId
+            )
+        }
     }
 
     fun onFindReplaceChanged(text: String) {
-        _ui.value = _ui.value.copy(findReplaceWith = text)
+        _ui.update { it.copy(findReplaceWith = text) }
     }
 
     fun toggleFindReplaceMode() {
-        _ui.value = _ui.value.copy(findReplaceMode = !_ui.value.findReplaceMode)
+        _ui.update { it.copy(findReplaceMode = !it.findReplaceMode) }
     }
 
     fun findNext() = stepFind(1)
     fun findPrev() = stepFind(-1)
 
     private fun stepFind(delta: Int) {
-        val st = _ui.value
-        if (st.findMatches.isEmpty()) return
-        val idx = ((st.findIndex + delta) % st.findMatches.size + st.findMatches.size) % st.findMatches.size
-        _ui.value = st.copy(findIndex = idx, findRequestId = st.findRequestId + 1)
+        _ui.update { st ->
+            if (st.findMatches.isEmpty()) return@update st
+            val size = st.findMatches.size
+            val idx = ((st.findIndex + delta) % size + size) % size
+            st.copy(findIndex = idx, findRequestId = st.findRequestId + 1)
+        }
     }
 
     fun replaceOne() {
-        val st = _ui.value
-        val content = st.editorText
-        val pos = st.findMatches.getOrNull(st.findIndex) ?: return
-        val end = pos + st.findQuery.length
-        if (end > content.length) return
-        val newText = content.substring(0, pos) + st.findReplaceWith + content.substring(end)
-        val matches = computeMatches(newText, st.findQuery)
-        _ui.value = st.copy(
-            editorText = newText,
-            dirty = true,
-            findMatches = matches,
-            findIndex = if (matches.isEmpty()) 0 else (st.findIndex % matches.size)
-        )
+        _ui.update { st ->
+            val content = st.editorText
+            val pos = st.findMatches.getOrNull(st.findIndex) ?: return@update st
+            val end = pos + st.findQuery.length
+            if (end > content.length) return@update st
+            val newText = content.substring(0, pos) + st.findReplaceWith + content.substring(end)
+            val matches = computeMatches(newText, st.findQuery)
+            st.copy(
+                editorText = newText,
+                dirty = true,
+                findMatches = matches,
+                findIndex = if (matches.isEmpty()) 0 else (st.findIndex % matches.size)
+            )
+        }
     }
 
     fun replaceAll() {
-        val st = _ui.value
-        if (st.findQuery.isEmpty()) return
-        val newText = st.editorText.replace(st.findQuery, st.findReplaceWith)
-        _ui.value = st.copy(
-            editorText = newText,
-            dirty = true,
-            findMatches = computeMatches(newText, st.findQuery),
-            findIndex = 0
-        )
+        _ui.update { st ->
+            if (st.findQuery.isEmpty()) return@update st
+            val newText = st.editorText.replace(st.findQuery, st.findReplaceWith)
+            st.copy(
+                editorText = newText,
+                dirty = true,
+                findMatches = computeMatches(newText, st.findQuery),
+                findIndex = 0
+            )
+        }
     }
 
     /** 当前查找状态的匹配信息，如「2/5」；无可匹配时为 null */
@@ -645,9 +704,9 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshGitStatus() {
         val dir = currentProject ?: return
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(gitBusy = true)
+            _ui.update { it.copy(gitBusy = true) }
             val status = withContext(Dispatchers.IO) { git.status(dir) }
-            _ui.value = _ui.value.copy(gitBusy = false, gitStatus = status)
+            _ui.update { it.copy(gitBusy = false, gitStatus = status) }
         }
     }
 
@@ -655,7 +714,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val dir = currentProject ?: return
         val s = _ui.value.settings
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(gitBusy = true)
+            _ui.update { it.copy(gitBusy = true) }
             val result = withContext(Dispatchers.IO) {
                 git.init(
                     dir,
@@ -663,7 +722,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                     s.gitUserEmail.ifBlank { "dev@terminal.local" }
                 )
             }
-            _ui.value = _ui.value.copy(gitBusy = false, gitLastResult = result)
+            _ui.update { it.copy(gitBusy = false, gitLastResult = result) }
             refreshGitStatus()
         }
     }
@@ -672,12 +731,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val dir = currentProject ?: return
         val s = _ui.value.settings
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(gitBusy = true)
+            _ui.update { it.copy(gitBusy = true) }
             val result = withContext(Dispatchers.IO) {
                 git.commitAll(dir, message, s.gitUserName.ifBlank { "devterminal" },
                     s.gitUserEmail.ifBlank { "dev@terminal.local" })
             }
-            _ui.value = _ui.value.copy(gitBusy = false, gitLastResult = result)
+            _ui.update { it.copy(gitBusy = false, gitLastResult = result) }
             refreshGitStatus()
         }
     }
@@ -685,18 +744,18 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun gitPush() {
         val dir = currentProject ?: return
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(gitBusy = true)
+            _ui.update { it.copy(gitBusy = true) }
             val result = withContext(Dispatchers.IO) { git.push(dir, _ui.value.settings.gitRemoteUrl) }
-            _ui.value = _ui.value.copy(gitBusy = false, gitLastResult = result)
+            _ui.update { it.copy(gitBusy = false, gitLastResult = result) }
         }
     }
 
     fun gitPull() {
         val dir = currentProject ?: return
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(gitBusy = true)
+            _ui.update { it.copy(gitBusy = true) }
             val result = withContext(Dispatchers.IO) { git.pull(dir, _ui.value.settings.gitRemoteUrl) }
-            _ui.value = _ui.value.copy(gitBusy = false, gitLastResult = result)
+            _ui.update { it.copy(gitBusy = false, gitLastResult = result) }
             refreshTree()
         }
     }
@@ -704,20 +763,20 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun onGitConfigChanged(name: String, email: String, remote: String) {
         val s = _ui.value.settings
         updateSettings(s.copy(gitUserName = name, gitUserEmail = email, gitRemoteUrl = remote))
-        _ui.value = _ui.value.copy(gitLastResult = "Git 配置已保存")
+        _ui.update { it.copy(gitLastResult = "Git 配置已保存") }
     }
 
     // ---------- AI 助手（v0.3） ----------
 
     fun onAiInputChanged(text: String) {
-        _ui.value = _ui.value.copy(aiInputDraft = text)
+        _ui.update { it.copy(aiInputDraft = text) }
     }
 
     /** 发送输入框里的自由提问 */
     fun sendAiInput() {
         val text = _ui.value.aiInputDraft.trim()
         if (text.isNotBlank()) {
-            _ui.value = _ui.value.copy(aiInputDraft = "")
+            _ui.update { it.copy(aiInputDraft = "") }
             askAi(text)
         }
     }
@@ -730,7 +789,8 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             "修复运行错误" -> {
                 val errs = AiClient.errorContext(st.output)
                 if (errs.isBlank()) {
-                    _ui.value = st.copy(message = "还没有运行输出，先跑一次再修")
+                    _ui.update { it.copy(message = "还没有运行输出，先跑一次再修",
+                        messageSeq = it.messageSeq + 1) }
                     return
                 }
                 "这是最近一次运行的报错输出，帮我定位原因并修复当前文件中的问题：\n$errs"
@@ -749,7 +809,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     private fun askAi(prompt: String) {
         val st = _ui.value
         if (!st.settings.aiConfigured) {
-            _ui.value = st.copy(message = "请先在设置里配置 AI 端点")
+            _ui.update { it.copy(message = "请先在设置里配置 AI 端点", messageSeq = it.messageSeq + 1) }
             return
         }
         if (st.aiBusy) return
@@ -757,10 +817,9 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val fileContext = if (st.currentFile != null)
             "【当前文件 ${st.currentFile.name}】\n${st.editorText.take(3500)}\n\n【用户请求】\n$prompt"
         else prompt
-        _ui.value = st.copy(
-            aiBusy = true,
-            aiMessages = history + AiClient.ChatMessage("user", prompt)
-        )
+        _ui.update {
+            it.copy(aiBusy = true, aiMessages = history + AiClient.ChatMessage("user", prompt))
+        }
         viewModelScope.launch {
             val reply = withContext(Dispatchers.IO) {
                 runCatching {
@@ -771,26 +830,28 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }.getOrElse { e -> "⚠️ ${e.message ?: "请求失败"}" }
             }
-            _ui.value = _ui.value.copy(
-                aiBusy = false,
-                aiMessages = _ui.value.aiMessages + AiClient.ChatMessage("assistant", reply)
-            )
+            _ui.update {
+                it.copy(aiBusy = false, aiMessages = it.aiMessages + AiClient.ChatMessage("assistant", reply))
+            }
         }
     }
 
     // ---------- 全局搜索（v0.3） ----------
 
-    /** 跨文件搜索：遍历项目内文本文件，收集命中行（上限 200 条防卡顿） */
+    /**
+     * 跨文件搜索：遍历项目内文本文件，收集命中行（上限 200 条防卡顿）。
+     * 跳过隐藏目录与构建产物——否则一次搜索能把 .git 翻个底朝天。
+     */
     fun searchAll(query: String) {
         val dir = currentProject ?: return
         if (query.isBlank()) return
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(globalSearching = true)
+            _ui.update { it.copy(globalSearching = true) }
             val hits = withContext(Dispatchers.IO) {
                 val result = mutableListOf<SearchHit>()
                 dir.walkTopDown()
-                    .filter { it.isFile && !it.name.startsWith(".") }
-                    .filter { it.extension in setOf("py", "java", "txt", "md", "json", "xml") }
+                    .onEnter { !it.name.startsWith(".") && it.name !in WALK_EXCLUDED }
+                    .filter { it.isFile && it.extension in SEARCHABLE_EXT && it.length() < 512 * 1024 }
                     .forEach { f ->
                         if (result.size >= 200) return@forEach
                         runCatching {
@@ -805,7 +866,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 result
             }
-            _ui.value = _ui.value.copy(globalSearching = false, globalResults = hits)
+            _ui.update { it.copy(globalSearching = false, globalResults = hits) }
         }
     }
 
@@ -818,11 +879,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * 把用户通过 SAF 选中的文件导入到当前项目。
+     * 同名文件自动加序号，不静默覆盖用户已有内容。
      * @param uri SAF 返回的内容 URI
      */
     fun importFile(uri: android.net.Uri) {
         val dir = currentProject ?: run {
-            _ui.value = _ui.value.copy(message = "没有打开的项目")
+            _ui.update { it.copy(message = "没有打开的项目", messageSeq = it.messageSeq + 1) }
             return
         }
         viewModelScope.launch {
@@ -830,14 +892,14 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 runCatching {
                     val resolver = context.contentResolver
                     // 从 URI 推断原始文件名
-                    val displayName = queryDisplayName(uri) ?: "imported_${System.currentTimeMillis()}.txt"
-                    val target = File(dir, displayName)
+                    val raw = queryDisplayName(uri) ?: "imported_${System.currentTimeMillis()}.txt"
+                    val target = uniqueTarget(dir, raw)
                     resolver.openInputStream(uri)?.use { input ->
                         target.outputStream().use { output -> input.copyTo(output) }
                     } ?: throw IllegalStateException("无法读取所选文件")
-                    displayName
+                    target.name
                 }.getOrElse { e ->
-                    _ui.value = _ui.value.copy(message = "导入失败：${e.message}")
+                    _ui.update { it.copy(message = "导入失败：${e.message}", messageSeq = it.messageSeq + 1) }
                     return@withContext null
                 }
             }
@@ -845,9 +907,24 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 refreshTree()
                 // 自动打开刚导入的文件
                 File(dir, name).takeIf { it.exists() }?.let { openFile(it) }
-                _ui.value = _ui.value.copy(message = "已导入 $name")
+                _ui.update { it.copy(message = "已导入 $name", messageSeq = it.messageSeq + 1) }
             }
         }
+    }
+
+    /** 目标文件已存在时追加 -1、-2… 直到不冲突 */
+    private fun uniqueTarget(dir: File, name: String): File {
+        var candidate = File(dir, name)
+        if (!candidate.exists()) return candidate
+        val dot = name.lastIndexOf('.')
+        val base = if (dot > 0) name.substring(0, dot) else name
+        val ext = if (dot > 0) name.substring(dot) else ""
+        var i = 1
+        while (candidate.exists() && i < 999) {
+            candidate = File(dir, "$base-$i$ext")
+            i++
+        }
+        return candidate
     }
 
     /**
@@ -857,7 +934,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun exportCurrentFile(uri: android.net.Uri) {
         val st = _ui.value
         val file = st.currentFile ?: run {
-            _ui.value = st.copy(message = "没有打开的文件")
+            _ui.update { it.copy(message = "没有打开的文件", messageSeq = it.messageSeq + 1) }
             return
         }
         viewModelScope.launch {
@@ -868,11 +945,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                     context.contentResolver.openOutputStream(uri)?.use { output ->
                         output.write(st.editorText.toByteArray(Charsets.UTF_8))
                     } ?: throw IllegalStateException("无法写入目标位置")
-                }.onSuccess {
-                    _ui.value = _ui.value.copy(dirty = false, message = "已导出 ${file.name}")
-                }.onFailure { e ->
-                    _ui.value = _ui.value.copy(message = "导出失败：${e.message}")
                 }
+            }.onSuccess {
+                _ui.update { it.copy(dirty = false, message = "已导出 ${file.name}",
+                    messageSeq = it.messageSeq + 1) }
+            }.onFailure { e ->
+                _ui.update { it.copy(message = "导出失败：${e.message}", messageSeq = it.messageSeq + 1) }
             }
         }
     }
@@ -889,6 +967,39 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun suggestedExportName(): String =
         _ui.value.currentFile?.name ?: "untitled.py"
 
+    // ---------- 语言识别 ----------
+
     private fun inferLanguage(file: File): Language =
-        if (file.extension == "java") Language.JAVA else Language.PYTHON
+        if (file.extension.equals("java", ignoreCase = true)) Language.JAVA else Language.PYTHON
+
+    /** 状态栏 / 编辑器用的语言显示名 */
+    fun languageLabelOf(file: File?): String = when (file?.extension?.lowercase()) {
+        "py" -> "Python"
+        "java" -> "Java"
+        "kt" -> "Kotlin"
+        "js" -> "JavaScript"
+        "ts" -> "TypeScript"
+        "json" -> "JSON"
+        "md" -> "Markdown"
+        "html", "htm" -> "HTML"
+        "css" -> "CSS"
+        "sh" -> "Shell"
+        "xml" -> "XML"
+        "yml", "yaml" -> "YAML"
+        "sql" -> "SQL"
+        "lua" -> "Lua"
+        "c", "h" -> "C"
+        "cpp", "hpp" -> "C++"
+        "go" -> "Go"
+        "rs" -> "Rust"
+        "txt" -> "纯文本"
+        else -> file?.extension?.uppercase()?.takeIf { it.isNotBlank() } ?: "纯文本"
+    }
+
+    private companion object {
+        val SEARCHABLE_EXT = setOf(
+            "py", "java", "kt", "js", "ts", "txt", "md", "json", "xml", "yml", "yaml",
+            "html", "css", "sh", "sql", "lua", "c", "cpp", "go", "rs"
+        )
+    }
 }

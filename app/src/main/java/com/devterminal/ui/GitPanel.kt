@@ -11,15 +11,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.automirrored.outlined.Undo
+import androidx.compose.material.icons.outlined.CloudDownload
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,17 +26,28 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.devterminal.engine.GitManager
+import com.devterminal.ui.components.MonoText
+import com.devterminal.ui.components.QuietAction
+import com.devterminal.ui.components.QuietDialog
+import com.devterminal.ui.components.QuietHint
+import com.devterminal.ui.components.QuietTextField
+import com.devterminal.ui.components.SectionLabel
+import com.devterminal.ui.components.StatusDot
+import com.devterminal.ui.theme.Dimens
+import com.devterminal.ui.theme.faint
+import com.devterminal.ui.theme.muted
 
 /**
  * Git 面板：仓库状态 / 提交 / 推送 / 拉取，对标 Spck 的 Git 工作流。
  *
  * 状态刷新、init、commit、push、pull 全部调用内置 git 二进制（离线可用）；
  * 远程仓库凭据走 URL 内嵌 token（用户在配置区填写）。
+ *
+ * 视觉重构：变更列表不再一行行堆 primary 色文本，改为等宽灰阶 + 状态色点；
+ * 主按钮收敛为一个「提交」，推送/拉取降级为无背景的文字动作。
  */
 @Composable
 fun GitPanelDialog(
@@ -63,155 +71,202 @@ fun GitPanelDialog(
     var cfgName by remember { mutableStateOf(gitName) }
     var cfgEmail by remember { mutableStateOf(gitEmail) }
     var cfgRemote by remember { mutableStateOf(remoteUrl) }
+    val cs = MaterialTheme.colorScheme
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Git 仓库") },
-        text = {
-            Column {
-                if (!gitInstalled) {
+    QuietDialog(
+        onDismiss = onDismiss,
+        title = "Git 仓库",
+        confirmLabel = "刷新",
+        onConfirm = onRefresh
+    ) {
+        if (!gitInstalled) {
+            Row(verticalAlignment = Alignment.Top) {
+                StatusDot(cs.error)
+                Spacer(Modifier.size(Dimens.sm))
+                Text(
+                    "工具链里没有 git 二进制，请重新生成 usrtar.zip（确保 usr/bin/git 存在）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = cs.error,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(Modifier.height(Dimens.md))
+        }
+
+        when {
+            busy -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 1.6.dp)
+                    Spacer(Modifier.size(Dimens.sm))
                     Text(
-                        "⚠️ 工具链里没有 git 二进制。请重新生成 usrtar.zip（确保 usr/bin/git 存在）。",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.error
+                        "Git 执行中…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = cs.muted
                     )
-                    Spacer(Modifier.height(8.dp))
                 }
-                // ---------- 状态区 ----------
-                when {
-                    busy -> {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Spacer(Modifier.padding(start = 10.dp))
-                            Text("Git 执行中…", fontSize = 13.sp)
-                        }
-                    }
-                    status == null || !status.isRepo -> {
-                        Text(
-                            "当前项目还不是 Git 仓库",
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Button(onClick = onInit) { Text("初始化仓库（main）") }
-                    }
-                    else -> {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "分支 ${status.branch}",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(Modifier.weight(1f))
-                            Text(
-                                "${status.changes.size} 个变更",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                            )
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        LazyColumn(Modifier.fillMaxWidth().height(if (status.changes.size > 4) 110.dp else 40.dp)) {
-                            if (status.changes.isEmpty()) {
-                                item { Text("工作区干净 ✓", fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.primary) }
-                            }
+            }
+            status == null || !status.isRepo -> {
+                QuietHint("当前项目还不是 Git 仓库")
+                Spacer(Modifier.height(Dimens.md))
+                TextButton(onClick = onInit) {
+                    Text(
+                        "初始化仓库（main）",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = cs.primary
+                    )
+                }
+            }
+            else -> {
+                // 分支 + 变更数
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    MonoText(
+                        status.branch,
+                        fontSize = 13,
+                        color = cs.onSurface
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "${status.changes.size} 个变更",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = cs.muted
+                    )
+                }
+                Spacer(Modifier.height(Dimens.sm))
+                // 变更列表
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(if (status.changes.size > 4) 116.dp else 44.dp)
+                ) {
+                    if (status.changes.isEmpty()) {
+                        QuietHint("工作区干净")
+                    } else {
+                        LazyColumn(Modifier.fillMaxWidth()) {
                             items(status.changes, key = { it.path }) { c ->
-                                Text(
-                                    "${c.statusCode.padEnd(3)} ${c.path}",
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                                )
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    StatusDot(if (c.statusCode.trim() == "??") cs.tertiary else cs.primary)
+                                    Spacer(Modifier.size(Dimens.sm))
+                                    MonoText(
+                                        c.path,
+                                        fontSize = 11,
+                                        maxLines = 1,
+                                        color = cs.onSurface.copy(alpha = 0.8f),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    MonoText(
+                                        c.statusCode.trim(),
+                                        fontSize = 11,
+                                        color = cs.faint
+                                    )
+                                }
                             }
-                        }
-                        Spacer(Modifier.height(10.dp))
-                        OutlinedTextField(
-                            value = commitMsg,
-                            onValueChange = { commitMsg = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("提交信息…", fontSize = 12.sp) },
-                            singleLine = true,
-                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp)
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Button(
-                                onClick = { onCommit(commitMsg); commitMsg = "" },
-                                enabled = commitMsg.isNotBlank(),
-                                modifier = Modifier.weight(1f)
-                            ) { Text("提交", fontSize = 12.sp) }
-                            TextButton(onClick = onPush, modifier = Modifier.weight(1f)) {
-                                Icon(Icons.Filled.CloudUpload, null, Modifier.size(15.dp))
-                                Text(" 推送", fontSize = 12.sp)
-                            }
-                            TextButton(onClick = onPull, modifier = Modifier.weight(1f)) {
-                                Icon(Icons.Filled.CloudDownload, null, Modifier.size(15.dp))
-                                Text(" 拉取", fontSize = 12.sp)
-                            }
-                        }
-                        status.recentCommits.take(3).forEach { c ->
-                            Text(
-                                c,
-                                fontSize = 10.5.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-                            )
                         }
                     }
                 }
-
-                lastResult?.let {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        it,
-                        fontSize = 11.5.sp,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
-                }
-
-                // ---------- 配置区 ----------
-                Spacer(Modifier.height(6.dp))
-                TextButton(onClick = { showConfig = !showConfig }) {
-                    Text(if (showConfig) "收起配置" else "配置（身份 / 远程）", fontSize = 11.sp)
-                }
-                if (showConfig) {
-                    OutlinedTextField(
-                        value = cfgName,
-                        onValueChange = { cfgName = it },
-                        label = { Text("Git 用户名", fontSize = 11.sp) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = cfgEmail,
-                        onValueChange = { cfgEmail = it },
-                        label = { Text("Git 邮箱", fontSize = 11.sp) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = cfgRemote,
-                        onValueChange = { cfgRemote = it },
-                        label = { Text("远程 URL（token 可内嵌）", fontSize = 11.sp) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                        singleLine = true
-                    )
+                Spacer(Modifier.height(Dimens.md))
+                QuietTextField(
+                    value = commitMsg,
+                    onValueChange = { commitMsg = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = "提交信息…",
+                    imeAction = ImeAction.Done,
+                    onImeAction = { if (commitMsg.isNotBlank()) onCommit(commitMsg); commitMsg = "" }
+                )
+                Spacer(Modifier.height(Dimens.xs))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(Dimens.xs)
+                ) {
                     TextButton(
-                        onClick = {
-                            onConfigChange(cfgName.trim(), cfgEmail.trim(), cfgRemote.trim())
-                            showConfig = false
-                        }
-                    ) { Text("保存配置", fontSize = 12.sp) }
+                        onClick = { onCommit(commitMsg); commitMsg = "" },
+                        enabled = commitMsg.isNotBlank()
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.Undo, null,
+                            Modifier.size(15.dp),
+                            tint = if (commitMsg.isNotBlank()) cs.primary else cs.faint
+                        )
+                        Spacer(Modifier.size(6.dp))
+                        Text(
+                            "提交",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (commitMsg.isNotBlank()) cs.primary else cs.faint
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    QuietAction(
+                        icon = Icons.Outlined.CloudUpload,
+                        label = "推送",
+                        onClick = onPush,
+                        tint = cs.muted
+                    )
+                    QuietAction(
+                        icon = Icons.Outlined.CloudDownload,
+                        label = "拉取",
+                        onClick = onPull,
+                        tint = cs.muted
+                    )
+                }
+                if (status.recentCommits.isNotEmpty()) {
+                    Spacer(Modifier.height(Dimens.md))
+                    SectionLabel("最近提交", modifier = Modifier.padding(bottom = Dimens.xs))
+                    status.recentCommits.take(3).forEach { c ->
+                        MonoText(c, fontSize = 11, color = cs.muted)
+                    }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onRefresh) {
-                Icon(Icons.Filled.Refresh, null, Modifier.size(15.dp))
-                Text("刷新")
+        }
+
+        lastResult?.let {
+            Spacer(Modifier.height(Dimens.md))
+            MonoText(it, fontSize = 11, color = cs.secondary)
+        }
+
+        // ---------- 配置区 ----------
+        Spacer(Modifier.height(Dimens.sm))
+        TextButton(onClick = { showConfig = !showConfig }) {
+            Text(
+                if (showConfig) "收起配置" else "配置身份 / 远程",
+                style = MaterialTheme.typography.labelSmall,
+                color = cs.muted
+            )
+        }
+        if (showConfig) {
+            QuietTextField(
+                value = cfgName,
+                onValueChange = { cfgName = it },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                placeholder = "Git 用户名"
+            )
+            QuietTextField(
+                value = cfgEmail,
+                onValueChange = { cfgEmail = it },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                placeholder = "Git 邮箱"
+            )
+            QuietTextField(
+                value = cfgRemote,
+                onValueChange = { cfgRemote = it },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                placeholder = "远程 URL（token 可内嵌）"
+            )
+            TextButton(
+                onClick = {
+                    onConfigChange(cfgName.trim(), cfgEmail.trim(), cfgRemote.trim())
+                    showConfig = false
+                }
+            ) {
+                Text(
+                    "保存配置",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = cs.primary
+                )
             }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
-    )
+        }
+    }
 }

@@ -1,23 +1,30 @@
 package com.devterminal.ui
 
+import android.util.TypedValue
 import android.view.KeyEvent
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.viewinterop.AndroidView
 import com.devterminal.engine.Language as DevLanguage
 import io.github.rosemoe.sora.event.ContentChangeEvent
 import io.github.rosemoe.sora.event.SelectionChangeEvent
+import io.github.rosemoe.sora.lang.Language
 import io.github.rosemoe.sora.langs.textmate.TextMateColorScheme
 import io.github.rosemoe.sora.langs.textmate.TextMateLanguage
 import io.github.rosemoe.sora.langs.textmate.registry.GrammarRegistry
@@ -26,7 +33,14 @@ import io.github.rosemoe.sora.langs.textmate.registry.model.ThemeModel
 import io.github.rosemoe.sora.widget.CodeEditor
 import io.github.rosemoe.sora.widget.component.EditorAutoCompletion
 import io.github.rosemoe.sora.widget.schemes.EditorColorScheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.concurrent.atomic.AtomicReference
+
+/** 深色 / 浅色两套 TextMate 主题名（与 assets/textmate/themes 下的文件对应） */
+private const val THEME_DARK = "darcula"
+private const val THEME_LIGHT = "quiet-light"
 
 /**
  * 基于 SoraEditor 的代码编辑器（经 AndroidView 桥接进 Compose）。
@@ -37,11 +51,12 @@ import java.io.File
  * 补全实现要点：sora-editor 的补全由 **Language** 提供，
  * 因此用 [StaticCompletionLanguage] 包一层 TextMate 语言（保留高亮 + 静态补全）。
  *
- * v0.2 新增：
- * - [onCursorChange] 光标行列回调（供状态栏显示）
- * - [insertSignal]/[insertText] 符号栏插入（走 Content.insert，进撤销栈）
- * - [backspaceSignal] 符号栏退格（模拟 KEYCODE_DEL，兼容 IME）
- * - [findRequest] 查找跳转（setSelection + ensureSelectionVisible）
+ * 修复要点：
+ * - **语言随文件切换**：原先只在 factory 里装一次语言，从 .py 切到 .java 后
+ *   高亮和补全仍按 Python 走；现在文件/语言变化即重新装配。
+ * - **主题跟随明暗**：原先恒为 darcula，浅色主题下编辑器是黑底，非常割裂。
+ * - **实例生命周期**：editor 在「未打开文件」分支之前创建，并由 DisposableEffect
+ *   统一释放，避免关闭最后一个 Tab 时实例泄漏。
  */
 @Composable
 fun CodeEditorView(
@@ -52,6 +67,7 @@ fun CodeEditorView(
     readOnly: Boolean = false,
     fontSize: Int = 14,
     language: DevLanguage = DevLanguage.PYTHON,
+    darkTheme: Boolean = true,
     onCursorChange: (Int, Int) -> Unit = { _, _ -> },
     /** 每次自增触发一次插入，insertText 为要插入的内容 */
     insertSignal: Long = 0,
@@ -64,6 +80,24 @@ fun CodeEditorView(
     onPinchZoom: ((Int) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    // 必须在「未打开文件」分支之前创建，否则关闭最后一个 Tab 会让实例泄漏
+    val editor = remember { CodeEditor(context) }
+    DisposableEffect(editor) {
+        onDispose { runCatching { editor.release() } }
+    }
+
+    // 语法/主题注册表全局只需初始化一次；读 assets 是 IO，放到后台线程
+    var textMateReady by remember { mutableStateOf(textMateInitialized) }
+    LaunchedEffect(Unit) {
+        if (textMateReady) return@LaunchedEffect
+        withContext(Dispatchers.IO) { initTextMate(context.assets) }
+        textMateReady = true
+    }
+
+    // 让补全能读到当前文档；用可变引用避免闭包捕获旧值
+    val docRef = remember { AtomicReference(text) }
+    val cursorCallback = remember { onCursorChange }
+    val zoomCallback = rememberUpdatedState(onPinchZoom)
 
     if (file == null) {
         Box(
@@ -79,12 +113,19 @@ fun CodeEditorView(
         return
     }
 
-    val editor = remember { CodeEditor(context) }
-    // 全局只需初始化一次语法/主题注册表
-    remember { initTextMate(context.assets) }
-    // 让补全能读到当前文档；用可变引用避免闭包捕获旧值
-    val docRef = remember { java.util.concurrent.atomic.AtomicReference(text) }
-    val cursorCallback = remember { onCursorChange }
+    // 文件（扩展名）或语言变化 → 重新装配高亮与补全
+    LaunchedEffect(textMateReady, file.absolutePath, language) {
+        if (!textMateReady) return@LaunchedEffect
+        applyLanguage(editor, file, language, docRef)
+    }
+
+    // 明暗切换 → 换主题。主题切换后必须重建 colorScheme 才会生效
+    LaunchedEffect(textMateReady, darkTheme) {
+        if (!textMateReady) return@LaunchedEffect
+        withContext(Dispatchers.IO) { runCatching { ThemeRegistry.getInstance().setTheme(themeName(darkTheme)) } }
+        applyScheme(editor)
+        applyLanguage(editor, file, language, docRef)
+    }
 
     // 符号栏插入：直接走编辑器内部 Content.insert，能正确进撤销栈
     LaunchedEffect(insertSignal) {
@@ -108,28 +149,26 @@ fun CodeEditorView(
     LaunchedEffect(findRequest?.requestId) {
         val req = findRequest ?: return@LaunchedEffect
         runCatching {
-            val content = editor.text?.toString() ?: return@LaunchedEffect
+            val content = editor.text.toString()
             val pos = req.pos.coerceIn(0, content.length)
             val line = content.substring(0, pos).count { it == '\n' }
             val col = if (line == 0) pos
-                      else pos - (content.lastIndexOf('\n', pos - 1) + 1)
+            else pos - (content.lastIndexOf('\n', pos - 1) + 1)
             runCatching { editor.setSelection(line, col) }
-            runCatching {
-                editor.ensureSelectionVisible()
-            }
+            runCatching { editor.ensureSelectionVisible() }
         }
     }
 
     AndroidView(
-        modifier = modifier.pointerInput(onPinchZoom) {
-            if (onPinchZoom == null) return@pointerInput
-            // 双指捏合调整字号：累积增量达到阈值才回调，避免字号抖动
+        modifier = modifier.pointerInput(Unit) {
+            // 双指捏合调整字号：累积增量达到阈值才回调，避免字号抖动。
+            // 用 rememberUpdatedState + 固定 key，手势不会因重组被重启。
             var pending = 0f
             detectTransformGestures { _, _, zoom, _ ->
                 if (zoom != 1f) {
                     pending += (zoom - 1f)
-                    if (pending > 0.14f) { onPinchZoom(1); pending = 0f }
-                    else if (pending < -0.14f) { onPinchZoom(-1); pending = 0f }
+                    if (pending > 0.14f) { zoomCallback.value?.invoke(1); pending = 0f }
+                    else if (pending < -0.14f) { zoomCallback.value?.invoke(-1); pending = 0f }
                 }
             }
         },
@@ -137,19 +176,9 @@ fun CodeEditorView(
             editor.apply {
                 setText(text)
                 isEditable = !readOnly
-                applyTheme()
                 setTextSize(fontSize.toFloat())
-
-                // 装配语言：TextMate 高亮 + 静态补全
-                runCatching {
-                    val textMate = TextMateLanguage.create(file.extension, false)
-                    val wrapped = StaticCompletionLanguage(
-                        delegate = textMate,
-                        devLanguage = language,
-                        documentSupplier = { docRef.get() }
-                    )
-                    setEditorLanguage(wrapped)
-                }
+                applyScheme(this)
+                applyLanguage(this, file, language, docRef)
 
                 // 启用补全组件（getter 是 getComponent）
                 runCatching {
@@ -157,7 +186,7 @@ fun CodeEditorView(
                 }
 
                 subscribeEvent(ContentChangeEvent::class.java) { _, _ ->
-                    val current = editor.text?.toString() ?: return@subscribeEvent
+                    val current = editor.text.toString()
                     docRef.set(current)
                     onTextChange(current)
                 }
@@ -173,24 +202,60 @@ fun CodeEditorView(
         update = { view ->
             docRef.set(text)
             // 字号实时跟随设置（setTextSize 单位为 sp）
-            val targetPx = fontSize * view.resources.displayMetrics.scaledDensity
+            val targetPx = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP, fontSize.toFloat(), view.resources.displayMetrics
+            )
             if (view.textSizePx != targetPx) view.setTextSize(fontSize.toFloat())
             // 仅当外部内容真的变化时才 setText，避免打断输入
-            if (view.text?.toString() != text) {
+            if (view.text.toString() != text) {
                 val line = runCatching { view.cursor.leftLine }.getOrDefault(0)
                 val col = runCatching { view.cursor.leftColumn }.getOrDefault(0)
                 view.setText(text)
                 runCatching { view.setSelection(line, col) }
             }
-        },
-        onRelease = { it.release() }
+        }
     )
 }
 
-private var textMateReady = false
+private fun themeName(dark: Boolean): String = if (dark) THEME_DARK else THEME_LIGHT
+
+/** 装配语言：TextMate 高亮 + 静态补全 */
+private fun applyLanguage(
+    editor: CodeEditor,
+    file: File,
+    language: DevLanguage,
+    docRef: AtomicReference<String>
+): Language? {
+    return runCatching {
+        val textMate = TextMateLanguage.create(file.extension, false)
+        val wrapped = StaticCompletionLanguage(
+            delegate = textMate,
+            devLanguage = language,
+            documentSupplier = { docRef.get() }
+        )
+        editor.setEditorLanguage(wrapped)
+        wrapped
+    }.onFailure {
+        // 语法文件缺失（比如没打包某种语言的 grammar）时降级为纯文本，不让编辑器崩
+        runCatching { editor.setEditorLanguage(null) }
+    }.getOrNull()
+}
+
+/**
+ * 用注册表里的**当前**主题重建配色方案。
+ * 主题由 [ThemeRegistry.setTheme] 切换，切换后必须重建 scheme 才会生效。
+ */
+private fun applyScheme(editor: CodeEditor) {
+    runCatching { TextMateColorScheme.create(ThemeRegistry.getInstance()) }
+        .onSuccess { editor.colorScheme = it }
+        .onFailure { editor.colorScheme = EditorColorScheme() }
+}
+
+@Volatile
+private var textMateInitialized = false
 
 private fun initTextMate(assets: android.content.res.AssetManager) {
-    if (textMateReady) return
+    if (textMateInitialized) return
     runCatching {
         // 语法文件从 APK assets 读取
         io.github.rosemoe.sora.langs.textmate.registry.FileProviderRegistry.getInstance()
@@ -198,19 +263,15 @@ private fun initTextMate(assets: android.content.res.AssetManager) {
                 io.github.rosemoe.sora.langs.textmate.registry.provider.AssetsFileResolver(assets)
             )
         GrammarRegistry.getInstance().loadGrammars("textmate/languages.json")
-        val themeSource = org.eclipse.tm4e.core.registry.IThemeSource.fromInputStream(
-            assets.open("textmate/themes/darcula.json"),
-            "darcula.json",
-            Charsets.UTF_8
-        )
-        ThemeRegistry.getInstance().loadTheme(ThemeModel(themeSource, "darcula"))
-        textMateReady = true
+        val registry = ThemeRegistry.getInstance()
+        listOf(THEME_DARK, THEME_LIGHT).forEach { name ->
+            val source = org.eclipse.tm4e.core.registry.IThemeSource.fromInputStream(
+                assets.open("textmate/themes/$name.json"),
+                "$name.json",
+                Charsets.UTF_8
+            )
+            registry.loadTheme(ThemeModel(source, name))
+        }
+        textMateInitialized = true
     }
-}
-
-private fun CodeEditor.applyTheme() {
-    runCatching {
-        TextMateColorScheme.create(ThemeRegistry.getInstance())
-    }.onSuccess { colorScheme = it }
-        .onFailure { colorScheme = EditorColorScheme() }
 }

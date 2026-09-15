@@ -49,12 +49,20 @@ class ProjectManager(installer: EnvironmentInstaller) {
         return dir
     }
 
-    /** 递归构建文件树（隐藏以 . 开头的内部文件） */
-    fun buildTree(dir: File): FileNode {
-        val children = dir.listFiles()
-            ?.filterNot { it.name.startsWith(".") }
+    /**
+     * 递归构建文件树。
+     *
+     * 两道护栏：
+     *  - 跳过隐藏项与构建产物（.git / build / __pycache__ …），否则一个 React 项目
+     *    的文件树能把 UI 卡死；
+     *  - 限制递归深度，防止目录软链接成环或异常深的层级把栈打爆。
+     */
+    fun buildTree(dir: File, depth: Int = 0): FileNode {
+        val children = if (depth >= MAX_DEPTH) emptyList()
+        else dir.listFiles()
+            ?.filterNot { it.name.startsWith(".") || it.name in EXCLUDED_DIRS }
             ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
-            ?.map { buildTree(it) }
+            ?.map { buildTree(it, depth + 1) }
             ?: emptyList()
         return FileNode(dir.name, dir.absolutePath, dir.isDirectory, children)
     }
@@ -96,4 +104,11 @@ class ProjectManager(installer: EnvironmentInstaller) {
 
     private fun sanitize(name: String): String =
         name.trim().replace(Regex("[^A-Za-z0-9_\\-\\u4e00-\\u9fa5]"), "_").ifBlank { "untitled" }
+
+    private companion object {
+        /** 文件树递归深度上限 */
+        const val MAX_DEPTH = 12
+        /** 不展示的目录（构建产物 / 依赖目录） */
+        val EXCLUDED_DIRS = setOf("build", "__pycache__", "node_modules", ".gradle", ".idea", "dist")
+    }
 }

@@ -1,9 +1,12 @@
 package com.devterminal.ui
 
+import android.Manifest
+import android.content.Intent
+import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,29 +20,24 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.MenuOpen
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Cancel
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.KeyboardCommandKey
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.outlined.HealthAndSafety
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -48,18 +46,15 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -70,24 +65,47 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import kotlin.math.roundToInt
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.devterminal.BuildConfig
+import com.devterminal.engine.Language
 import com.devterminal.project.Templates
-import java.io.File
+import com.devterminal.ui.components.ActionTile
+import com.devterminal.ui.components.Hairline
+import com.devterminal.ui.components.MonoText
+import com.devterminal.ui.components.QuietIconButton
+import com.devterminal.ui.components.SectionLabel
+import com.devterminal.ui.theme.Dimens
+import com.devterminal.ui.theme.faint
+import com.devterminal.ui.theme.hairline
+import com.devterminal.ui.theme.muted
 import kotlinx.coroutines.launch
+import java.io.File
+import kotlin.math.roundToInt
 
+/**
+ * 主界面。
+ *
+ * 重构思路（简洁唯美主义）：
+ *  - **顶栏只留三个动作**：菜单、命令面板、运行/停止（保存仅在未保存时出现）。
+ *    原先塞了 6 个图标，在未保存时更是挤到 7 个，小屏上彼此只剩几像素间距。
+ *    其余动作全部收进 ⌘K 命令面板——它们的入口没消失，只是不再抢位置。
+ *  - **抽屉底部从三行文字按钮改为九宫格图标入口**，扫描效率更高也更整齐。
+ *  - 全站不再出现实心色块徽标，状态一律用「色点 + 细字」表达。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorScreen(vm: EditorViewModel) {
     val ui by vm.ui.collectAsStateWithLifecycle()
+    val cs = MaterialTheme.colorScheme
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
+    val context = LocalContext.current
+
     var showNewProject by remember { mutableStateOf(false) }
     var showDiagnostics by remember { mutableStateOf(false) }
     var showRunConfig by remember { mutableStateOf(false) }
@@ -97,7 +115,6 @@ fun EditorScreen(vm: EditorViewModel) {
     var showGit by remember { mutableStateOf(false) }
     var showAi by remember { mutableStateOf(false) }
     var showGlobalSearch by remember { mutableStateOf(false) }
-    val context = androidx.compose.ui.platform.LocalContext.current
     /** 长按文件树后的操作目标 */
     var actionTarget by remember { mutableStateOf<File?>(null) }
     /** 全局搜索关键词 */
@@ -113,7 +130,19 @@ fun EditorScreen(vm: EditorViewModel) {
         ActivityResultContracts.CreateDocument("text/plain")
     ) { uri -> uri?.let { vm.exportCurrentFile(it) } }
 
-    LaunchedEffect(ui.message) {
+    // Android 13+ 不申请通知权限，运行时的前台服务通知会被系统静默吞掉，
+    // 用户既看不到「代码运行中」，也更容易被后台策略杀进程。
+    val notifLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+    LaunchedEffect(ui.envState) {
+        if (ui.envState == EnvState.READY && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    // 以提示序号为 key：内容相同的两条消息也能各弹一次
+    LaunchedEffect(ui.messageSeq) {
         ui.message?.let {
             snackbar.showSnackbar(it)
             vm.consumeMessage()
@@ -121,8 +150,8 @@ fun EditorScreen(vm: EditorViewModel) {
     }
 
     // 切后台 / 系统回收前自动保存：任何已发布编辑器的数据安全底线
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) vm.saveOnBackground()
         }
@@ -131,7 +160,7 @@ fun EditorScreen(vm: EditorViewModel) {
     }
 
     // 返回键：先关查找条/抽屉，而不是直接退出 App
-    androidx.activity.compose.BackHandler(enabled = ui.findVisible || drawerState.isOpen) {
+    BackHandler(enabled = ui.findVisible || drawerState.isOpen) {
         when {
             ui.findVisible -> vm.showFind(false)
             drawerState.isOpen -> scope.launch { drawerState.close() }
@@ -140,26 +169,7 @@ fun EditorScreen(vm: EditorViewModel) {
 
     // 环境准备中：全屏进度
     if (ui.envState == EnvState.PREPARING) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator()
-                Spacer(Modifier.height(16.dp))
-                Text(ui.envMessage, fontSize = 14.sp)
-                if (ui.installProgress >= 0f) {
-                    Spacer(Modifier.height(16.dp))
-                    LinearProgressIndicator(
-                        progress = { ui.installProgress },
-                        modifier = Modifier.width(220.dp)
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "首次启动需解压工具链，请稍候…",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
-                }
-            }
-        }
+        PreparingScreen(message = ui.envMessage, progress = ui.installProgress)
         return
     }
 
@@ -176,25 +186,40 @@ fun EditorScreen(vm: EditorViewModel) {
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            ModalDrawerSheet(Modifier.width(280.dp)) {
+            ModalDrawerSheet(
+                modifier = Modifier.width(272.dp),
+                drawerContainerColor = cs.surface
+            ) {
                 Column(Modifier.fillMaxHeight()) {
+                    // ---------- 品牌区 ----------
                     Row(
-                        Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = Dimens.lg, end = Dimens.sm, top = Dimens.xl, bottom = Dimens.md),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            "DevTerminal",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.weight(1f)
+                        Icon(
+                            Icons.Outlined.Terminal, null,
+                            tint = cs.primary, modifier = Modifier.size(20.dp)
                         )
-                        IconButton(onClick = { vm.showFind(true) }) {
-                            Icon(Icons.Filled.Search, "在项目中查找",
-                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                        Spacer(Modifier.width(Dimens.sm))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "DevTerminal",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                            )
+                            MonoText("v${BuildConfig.VERSION_NAME} · 完全离线",
+                                color = cs.faint, fontSize = 9)
                         }
+                        QuietIconButton(
+                            Icons.AutoMirrored.Outlined.MenuOpen, "收起侧栏",
+                            onClick = { scope.launch { drawerState.close() } }
+                        )
                     }
-                    Divider()
+                    Hairline()
+
+                    // ---------- 文件树 ----------
                     FileTree(
                         root = ui.tree,
                         selectedPath = ui.currentFile?.absolutePath,
@@ -202,98 +227,52 @@ fun EditorScreen(vm: EditorViewModel) {
                         onFileLongPress = { node -> actionTarget = File(node.path) },
                         modifier = Modifier.weight(1f)
                     )
-                    Divider()
-                    // 底部操作区：分成两行，避免小屏挤压
-                    Column(Modifier.fillMaxWidth().padding(8.dp)) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            TextButton(
+
+                    Hairline()
+                    // ---------- 动作九宫格 ----------
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = Dimens.md, vertical = Dimens.md)
+                    ) {
+                        SectionLabel("快捷动作")
+                        Spacer(Modifier.height(Dimens.sm))
+                        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.sm)) {
+                            ActionTile(Icons.Filled.Add, "新项目",
                                 onClick = { showNewProject = true },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Filled.Add, null, Modifier.size(16.dp))
-                                Spacer(Modifier.width(3.dp))
-                                Text("新项目", fontSize = 12.sp)
-                            }
-                            TextButton(
+                                modifier = Modifier.weight(1f))
+                            ActionTile(Icons.Filled.FileDownload, "导入",
                                 onClick = { importLauncher.launch(arrayOf("*/*")) },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Filled.FileDownload, null, Modifier.size(16.dp))
-                                Spacer(Modifier.width(3.dp))
-                                Text("导入", fontSize = 12.sp)
-                            }
-                            TextButton(
+                                modifier = Modifier.weight(1f))
+                            ActionTile(Icons.Filled.FileUpload, "导出",
                                 onClick = { exportLauncher.launch(vm.suggestedExportName()) },
                                 enabled = ui.currentFile != null,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Filled.FileUpload, null, Modifier.size(16.dp))
-                                Spacer(Modifier.width(3.dp))
-                                Text("导出", fontSize = 12.sp)
-                            }
+                                modifier = Modifier.weight(1f))
                         }
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            TextButton(
-                                onClick = { showDiagnostics = true },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Filled.Info, null, Modifier.size(16.dp))
-                                Spacer(Modifier.width(3.dp))
-                                Text("自检", fontSize = 12.sp)
-                            }
-                            TextButton(
-                                onClick = { showSettings = true },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Filled.Settings, null, Modifier.size(16.dp))
-                                Spacer(Modifier.width(3.dp))
-                                Text("设置", fontSize = 12.sp)
-                            }
-                            TextButton(
-                                onClick = { showAbout = true },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Filled.Info, null, Modifier.size(16.dp))
-                                Spacer(Modifier.width(3.dp))
-                                Text("关于", fontSize = 12.sp)
-                            }
-                        }
-                        // 第三行：Git / AI / 全局搜索（v0.3）
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            TextButton(
+                        Spacer(Modifier.height(Dimens.sm))
+                        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.sm)) {
+                            ActionTile(Icons.Filled.AccountTree, "Git",
                                 onClick = { showGit = true; vm.refreshGitStatus() },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Filled.AccountTree, null, Modifier.size(16.dp))
-                                Spacer(Modifier.width(3.dp))
-                                Text("Git", fontSize = 12.sp)
-                            }
-                            TextButton(
+                                modifier = Modifier.weight(1f))
+                            ActionTile(Icons.Filled.AutoAwesome, "AI",
                                 onClick = { showAi = true },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Filled.AutoAwesome, null, Modifier.size(16.dp),
-                                    tint = MaterialTheme.colorScheme.secondary)
-                                Spacer(Modifier.width(3.dp))
-                                Text("AI", fontSize = 12.sp)
-                            }
-                            TextButton(
+                                accent = cs.secondary,
+                                modifier = Modifier.weight(1f))
+                            ActionTile(Icons.Filled.Search, "搜索",
                                 onClick = { showGlobalSearch = true },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Filled.Search, null, Modifier.size(16.dp))
-                                Spacer(Modifier.width(3.dp))
-                                Text("搜索", fontSize = 12.sp)
-                            }
+                                modifier = Modifier.weight(1f))
+                        }
+                        Spacer(Modifier.height(Dimens.sm))
+                        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.sm)) {
+                            ActionTile(Icons.Outlined.HealthAndSafety, "自检",
+                                onClick = { showDiagnostics = true },
+                                modifier = Modifier.weight(1f))
+                            ActionTile(Icons.Filled.Settings, "设置",
+                                onClick = { showSettings = true },
+                                modifier = Modifier.weight(1f))
+                            ActionTile(Icons.Outlined.Info, "关于",
+                                onClick = { showAbout = true },
+                                modifier = Modifier.weight(1f))
                         }
                     }
                 }
@@ -304,62 +283,62 @@ fun EditorScreen(vm: EditorViewModel) {
             topBar = {
                 TopAppBar(
                     title = {
-                        Column {
-                            Text(
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            MonoText(
                                 ui.currentFile?.name ?: "未打开文件",
-                                fontSize = 15.sp,
-                                fontFamily = FontFamily.Monospace
+                                color = if (ui.currentFile != null) cs.onSurface else cs.faint,
+                                fontSize = 13
                             )
                             if (ui.dirty) {
-                                Text("未保存", fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.secondary)
+                                Spacer(Modifier.width(6.dp))
+                                Box(
+                                    Modifier
+                                        .size(6.dp)
+                                        .background(cs.secondary, androidx.compose.foundation.shape.CircleShape)
+                                )
                             }
                         }
                     },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Filled.Menu, "打开文件树")
+                            Icon(Icons.Outlined.Menu, "打开文件树", tint = cs.muted)
                         }
                     },
                     actions = {
-                        IconButton(onClick = { showPalette = true }) {
-                            Icon(Icons.Filled.KeyboardCommandKey, "命令面板",
-                                tint = MaterialTheme.colorScheme.primary)
-                        }
-                        IconButton(onClick = { vm.showFind(true) }) {
-                            Icon(Icons.Filled.Search, "查找 / 替换",
-                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
-                        }
-                        IconButton(onClick = { showRunConfig = true }) {
-                            Icon(Icons.Filled.Tune, "运行配置",
-                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
-                        }
+                        // 命令面板：其余动作的归处，保持顶栏清爽
+                        QuietIconButton(
+                            Icons.Outlined.Terminal, "命令面板",
+                            onClick = { showPalette = true }
+                        )
                         if (ui.dirty) {
-                            IconButton(onClick = { vm.save() }) {
-                                Icon(Icons.Filled.Save, "保存")
-                            }
+                            QuietIconButton(
+                                Icons.Filled.Save, "保存",
+                                onClick = { vm.save() }, tint = cs.primary
+                            )
                         }
                         if (ui.running) {
-                            IconButton(onClick = { vm.stopRun() }) {
-                                Icon(Icons.Filled.Stop, "停止",
-                                    tint = MaterialTheme.colorScheme.error)
-                            }
+                            QuietIconButton(
+                                Icons.Filled.Stop, "停止",
+                                onClick = { vm.stopRun() }, tint = cs.error
+                            )
                         } else {
-                            IconButton(
+                            QuietIconButton(
+                                Icons.Filled.PlayArrow, "运行",
                                 onClick = { vm.runCurrent() },
-                                enabled = ui.currentFile != null
-                            ) {
-                                Icon(Icons.Filled.PlayArrow, "运行",
-                                    tint = MaterialTheme.colorScheme.primary)
-                            }
+                                enabled = ui.currentFile != null,
+                                tint = if (ui.currentFile != null) cs.primary else cs.faint,
+                                size = 24.dp
+                            )
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface
+                        containerColor = cs.surface,
+                        scrolledContainerColor = cs.surface
                     )
                 )
             },
-            snackbarHost = { SnackbarHost(snackbar) }
+            snackbarHost = { SnackbarHost(snackbar) },
+            containerColor = cs.background
         ) { padding ->
             // 输出面板高度：初始值来自设置，拖拽即时调整，松手才落盘
             var outputHeight by remember(ui.settings.outputHeightDp) {
@@ -368,22 +347,20 @@ fun EditorScreen(vm: EditorViewModel) {
             Column(Modifier.padding(padding).fillMaxSize()) {
                 if (ui.envState == EnvState.ERROR) {
                     Box(
-                        Modifier.fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.error.copy(alpha = 0.12f))
-                            .padding(12.dp)
+                        Modifier
+                            .fillMaxWidth()
+                            .background(cs.error.copy(alpha = 0.10f))
+                            .padding(horizontal = Dimens.lg, vertical = Dimens.sm)
                     ) {
-                        Text(ui.envMessage, fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.error)
+                        MonoText(ui.envMessage, color = cs.error, fontSize = 11)
                     }
                 }
-                // 多文件 Tab 条（对标 VS Code / Acode）
                 FileTabs(
                     tabs = ui.openTabs,
                     activePath = ui.currentFile?.absolutePath,
                     onSelect = { vm.openFile(it) },
                     onClose = { vm.closeTab(it) }
                 )
-                // 查找 / 替换条
                 if (ui.findVisible) {
                     FindBar(
                         query = ui.findQuery,
@@ -405,9 +382,9 @@ fun EditorScreen(vm: EditorViewModel) {
                     text = ui.editorText,
                     onTextChange = vm::onEditorChanged,
                     fontSize = ui.settings.editorFontSize,
-                    language = if (ui.currentFile?.extension == "java")
-                        com.devterminal.engine.Language.JAVA
-                    else com.devterminal.engine.Language.PYTHON,
+                    language = if (ui.currentFile?.extension.equals("java", ignoreCase = true))
+                        Language.JAVA else Language.PYTHON,
+                    darkTheme = ui.settings.darkTheme,
                     onCursorChange = vm::onCursorChanged,
                     insertSignal = ui.insertSignal,
                     insertText = ui.insertText,
@@ -426,32 +403,30 @@ fun EditorScreen(vm: EditorViewModel) {
                     },
                     modifier = Modifier.fillMaxWidth().weight(1f)
                 )
-                // 快捷符号栏：手机键盘打符号太费劲
                 SymbolBar(
                     onInsert = { vm.insertSymbol(it) },
                     onBackspace = { vm.backspaceSymbol() }
                 )
-                Divider()
-                // 拖拽把手：上下拖调整输出面板高度
+                // 拖拽把手：一条细横线，暗示「这里可以拖动」，不加背景色
                 Box(
-                    Modifier.fillMaxWidth().height(16.dp)
-                        .background(MaterialTheme.colorScheme.surface)
+                    Modifier
+                        .fillMaxWidth()
+                        .height(14.dp)
+                        .background(cs.surface)
                         .pointerInput(Unit) {
                             detectVerticalDragGestures(
                                 onDragEnd = { vm.persistOutputHeight(outputHeight.roundToInt()) }
                             ) { _, dragAmount ->
-                                outputHeight = (outputHeight + dragAmount)
-                                    .coerceIn(120f, 560f)
+                                outputHeight = (outputHeight + dragAmount).coerceIn(120f, 560f)
                             }
                         },
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
-                        Modifier.width(36.dp).height(4.dp)
-                            .background(
-                                MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                                androidx.compose.foundation.shape.RoundedCornerShape(2.dp)
-                            )
+                        Modifier
+                            .width(32.dp)
+                            .height(3.dp)
+                            .background(cs.outline.copy(alpha = 0.7f), RoundedCornerShape(2.dp))
                     )
                 }
                 OutputPanel(
@@ -467,21 +442,21 @@ fun EditorScreen(vm: EditorViewModel) {
                     onShare = {
                         // 通过系统分享把运行结果发出去（聊天/笔记/Issue 都方便）
                         val text = ui.output.joinToString("\n")
-                        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        val intent = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
-                            putExtra(android.content.Intent.EXTRA_TEXT, text)
+                            putExtra(Intent.EXTRA_TEXT, text)
                         }
                         runCatching {
-                            context.startActivity(android.content.Intent.createChooser(intent, "分享运行结果"))
+                            context.startActivity(Intent.createChooser(intent, "分享运行结果"))
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(outputHeight.dp)
                 )
-                // 底部状态栏：光标位置 / 语言 / 保存状态
+                Hairline()
                 StatusBar(
                     line = ui.cursorLine,
                     column = ui.cursorColumn,
-                    language = if (ui.currentFile?.extension == "java") "Java" else "Python",
+                    language = ui.languageLabel,
                     charCount = ui.editorText.length,
                     dirty = ui.dirty
                 )
@@ -496,11 +471,10 @@ fun EditorScreen(vm: EditorViewModel) {
         )
     }
 
-    // ---------- 命令面板：所有动作的搜索入口（v0.3） ----------
+    // ---------- 命令面板：所有动作的搜索入口 ----------
     if (showPalette) {
         CommandPalette(
             commands = buildCommands(vm, ui,
-                // 触发对话框的动作要在面板关闭后生效（面板点击后已自动 onDismiss）
                 onCommand = { cmd -> when (cmd) {
                     "diag" -> showDiagnostics = true
                     "settings" -> showSettings = true
@@ -522,9 +496,7 @@ fun EditorScreen(vm: EditorViewModel) {
             status = ui.gitStatus,
             busy = ui.gitBusy,
             lastResult = ui.gitLastResult,
-            gitInstalled = remember { com.devterminal.engine.GitManager(
-                com.devterminal.engine.EnvironmentInstaller(context)
-            ).isGitInstalled() },
+            gitInstalled = ui.gitInstalled,
             gitName = ui.settings.gitUserName,
             gitEmail = ui.settings.gitUserEmail,
             remoteUrl = ui.settings.gitRemoteUrl,
@@ -609,367 +581,45 @@ fun EditorScreen(vm: EditorViewModel) {
     }
 }
 
-/** 设置页 */
+/**
+ * 首次启动的解压进度页。
+ * 大留白 + 一行说明，不再用堆控件的方式表达「请稍候」。
+ */
 @Composable
-private fun SettingsDialog(
-    settings: com.devterminal.settings.AppSettings,
-    onToggleDark: (Boolean) -> Unit,
-    onFontSizeChange: (Int) -> Unit,
-    onAutoSaveChange: (Boolean) -> Unit,
-    onTimeoutChange: (Int) -> Unit,
-    onAiConfigChange: (url: String, key: String, model: String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var aiUrl by remember { mutableStateOf(settings.aiBaseUrl) }
-    var aiKey by remember { mutableStateOf(settings.aiApiKey) }
-    var aiModel by remember { mutableStateOf(settings.aiModel) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("设置") },
-        text = {
-            Column {
-                // 深色主题
-                SettingSwitch(
-                    label = "深色主题",
-                    hint = "关闭后使用浅色配色",
-                    checked = settings.darkTheme,
-                    onChange = onToggleDark
-                )
-                Spacer(Modifier.height(12.dp))
-                // 自动保存
-                SettingSwitch(
-                    label = "切换文件时自动保存",
-                    hint = "避免忘记保存导致改动丢失",
-                    checked = settings.autoSave,
-                    onChange = onAutoSaveChange
-                )
-                Spacer(Modifier.height(16.dp))
-                // 编辑器字号
-                Text(
-                    "编辑器字号：${settings.editorFontSize} sp",
-                    fontSize = 13.sp, fontWeight = FontWeight.Medium
-                )
-                Slider(
-                    value = settings.editorFontSize.toFloat(),
-                    onValueChange = { onFontSizeChange(it.roundToInt()) },
-                    valueRange = 10f..24f,
-                    steps = 13
-                )
-                Spacer(Modifier.height(8.dp))
-                // 运行超时
-                Text(
-                    "运行超时：${settings.timeoutSeconds} 秒",
-                    fontSize = 13.sp, fontWeight = FontWeight.Medium
-                )
-                Slider(
-                    value = settings.timeoutSeconds.toFloat(),
-                    onValueChange = { onTimeoutChange(it.roundToInt()) },
-                    valueRange = 10f..600f,
-                    steps = 58
-                )
-                Text(
-                    "超时后进程会被强制结束，防止死循环耗尽电量。",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-                )
-                Spacer(Modifier.height(16.dp))
-                // AI 助手（可选，BYOK）
-                Text("AI 助手（可选）", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "默认指向本机 Ollama，本地推理即离线可用；不配置不影响其他功能。",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-                )
-                Spacer(Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = aiUrl,
-                    onValueChange = { aiUrl = it },
-                    label = { Text("端点 URL（OpenAI 兼容，/v1 结尾）", fontSize = 11.sp) },
-                    modifier = Modifier.fillMaxWidth(),
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        fontSize = 12.sp, fontFamily = FontFamily.Monospace),
-                    singleLine = true
-                )
-                Spacer(Modifier.height(4.dp))
-                OutlinedTextField(
-                    value = aiModel,
-                    onValueChange = { aiModel = it },
-                    label = { Text("模型名", fontSize = 11.sp) },
-                    modifier = Modifier.fillMaxWidth(),
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        fontSize = 12.sp, fontFamily = FontFamily.Monospace),
-                    singleLine = true
-                )
-                Spacer(Modifier.height(4.dp))
-                OutlinedTextField(
-                    value = aiKey,
-                    onValueChange = { aiKey = it },
-                    label = { Text("API Key（本地端点可留空）", fontSize = 11.sp) },
-                    modifier = Modifier.fillMaxWidth(),
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        fontSize = 12.sp, fontFamily = FontFamily.Monospace),
-                    singleLine = true
-                )
-                TextButton(
-                    onClick = { onAiConfigChange(aiUrl.trim(), aiKey.trim(), aiModel.trim()) },
-                    enabled = aiUrl.isNotBlank()
-                ) { Text("保存 AI 配置", fontSize = 12.sp) }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } }
-    )
-}
-
-@Composable
-private fun SettingSwitch(
-    label: String,
-    hint: String,
-    checked: Boolean,
-    onChange: (Boolean) -> Unit
-) {
-    Row(
-        Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            Text(
-                hint,
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+private fun PreparingScreen(message: String, progress: Float) {
+    val cs = MaterialTheme.colorScheme
+    Box(Modifier.fillMaxSize().background(cs.background), contentAlignment = Alignment.Center) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = Dimens.xxl)
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(26.dp),
+                strokeWidth = 2.dp,
+                color = cs.primary
             )
+            Spacer(Modifier.height(Dimens.lg))
+            Text(message, style = MaterialTheme.typography.bodyMedium, color = cs.muted,
+                textAlign = TextAlign.Center)
+            if (progress >= 0f) {
+                Spacer(Modifier.height(Dimens.lg))
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .width(200.dp)
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(2.dp)),
+                    color = cs.primary,
+                    trackColor = cs.hairline
+                )
+                Spacer(Modifier.height(Dimens.sm))
+                MonoText(
+                    "首次启动需解压离线工具链，请稍候…",
+                    color = cs.faint, fontSize = 10
+                )
+            }
         }
-        Switch(checked = checked, onCheckedChange = onChange)
     }
-}
-
-/** 关于页：版本与开源许可 */
-@Composable
-private fun AboutDialog(onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("关于 DevTerminal") },
-        text = {
-            Column {
-                Text("版本 ${BuildConfig.VERSION_NAME}", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "完全离线的安卓编程终端。内置 Python / Java 工具链，" +
-                        "无需联网即可编写、运行、调试代码。",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
-                )
-                Spacer(Modifier.height(16.dp))
-                Text("开源许可", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(6.dp))
-                listOf(
-                    "SoraEditor — LGPL-2.1（代码编辑器）",
-                    "Termux packages — GPL 等（离线工具链）",
-                    "Jetpack Compose — Apache-2.0",
-                    "AndroidX — Apache-2.0"
-                ).forEach {
-                    Text(
-                        "· $it",
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                        modifier = Modifier.padding(vertical = 1.dp)
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "本应用的离线工具链来自 Termux 项目，遵循其相应许可；" +
-                        "SoraEditor 以 LGPL 授权，用户可自行替换该库。",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-                )
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
-    )
-}
-
-/** 运行配置：命令行参数 + Java 主类 */
-@Composable
-private fun RunConfigDialog(
-    args: String,
-    mainClass: String,
-    onArgsChange: (String) -> Unit,
-    onMainClassChange: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("运行配置") },
-        text = {
-            Column {
-                Text("命令行参数", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = args,
-                    onValueChange = onArgsChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("如: --name \"hello world\" -v", fontSize = 12.sp) },
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        fontSize = 13.sp, fontFamily = FontFamily.Monospace
-                    ),
-                    singleLine = true
-                )
-                Spacer(Modifier.height(14.dp))
-                Text("Java 主类（留空自动探测）", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = mainClass,
-                    onValueChange = onMainClassChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("如: com.example.Main", fontSize = 12.sp) },
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        fontSize = 13.sp, fontFamily = FontFamily.Monospace
-                    ),
-                    singleLine = true
-                )
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "参数按空格切分，含空格的参数用双引号包起来。",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-                )
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } }
-    )
-}
-
-/** 文件操作：重命名 / 删除 */
-@Composable
-private fun FileActionDialog(
-    target: File,
-    onRename: (String) -> Unit,
-    onDelete: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    var name by remember { mutableStateOf(target.name) }
-    var confirmDelete by remember { mutableStateOf(false) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(target.name, fontFamily = FontFamily.Monospace, fontSize = 15.sp) },
-        text = {
-            Column {
-                Text("重命名", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        fontSize = 13.sp, fontFamily = FontFamily.Monospace
-                    ),
-                    singleLine = true
-                )
-                if (confirmDelete) {
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        "⚠️ 确认删除？此操作不可恢复（目录会连同内容一起删除）。",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onRename(name) },
-                enabled = name.isNotBlank() && name != target.name
-            ) { Text("重命名") }
-        },
-        dismissButton = {
-            if (confirmDelete) {
-                TextButton(onClick = onDelete) {
-                    Text("确认删除", color = MaterialTheme.colorScheme.error)
-                }
-            } else {
-                TextButton(onClick = { confirmDelete = true }) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
-                }
-            }
-        }
-    )
-}
-
-/** 环境自检结果对话框：展示每个工具是否可用 */
-@Composable
-private fun DiagnosticsDialog(
-    diagnostics: com.devterminal.engine.EnvReport?,
-    onRefresh: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("离线环境自检") },
-        text = {
-            if (diagnostics == null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(10.dp))
-                    Text("检测中…", fontSize = 13.sp)
-                }
-            } else {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            if (diagnostics.prefixReady) Icons.Filled.CheckCircle else Icons.Filled.Warning,
-                            null,
-                            tint = if (diagnostics.prefixReady) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            if (diagnostics.prefixReady) "工具链已安装" else "工具链缺失",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "占用空间：" + com.devterminal.engine.EnvDiagnostics
-                            .formatSize(diagnostics.installedSizeBytes),
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    diagnostics.tools.forEach { t ->
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Icon(
-                                if (t.available) Icons.Filled.CheckCircle else Icons.Filled.Cancel,
-                                null,
-                                tint = if (t.available) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(14.dp).padding(top = 2.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Column {
-                                Text(t.name, fontSize = 13.sp)
-                                Text(
-                                    t.detail,
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onRefresh) { Text("重新检测") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
-    )
 }
 
 /**
@@ -984,50 +634,46 @@ private fun MissingToolchainScreen(
     detail: String?,
     onRetry: () -> Unit
 ) {
+    val cs = MaterialTheme.colorScheme
     Box(
-        Modifier.fillMaxSize().padding(24.dp),
+        Modifier
+            .fillMaxSize()
+            .background(cs.background)
+            .padding(Dimens.xxl),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.Start) {
-            Text(
-                message,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.error
-            )
-            Spacer(Modifier.height(12.dp))
+        Column {
+            Text(message, style = MaterialTheme.typography.titleMedium, color = cs.error)
+            Spacer(Modifier.height(Dimens.md))
             Text(
                 "DevTerminal 完全离线运行，因此 Python / Java 工具链必须提前打进 APK。",
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                style = MaterialTheme.typography.bodyMedium,
+                color = cs.muted
             )
-            Spacer(Modifier.height(16.dp))
-            Text("修复步骤", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Dimens.xl))
+            SectionLabel("修复步骤")
+            Spacer(Modifier.height(Dimens.sm))
             listOf(
                 "1. 在手机 Termux 里执行 tools/extract_bootstrap.sh",
                 "2. 把生成的 usrtar.zip 拷到开发机",
                 "3. 放到 app/src/main/assets/usrtar.zip",
                 "4. 重新构建并安装 APK"
             ).forEach { step ->
-                Text(
+                MonoText(
                     step,
-                    fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                    modifier = Modifier.padding(vertical = 2.dp)
+                    color = cs.onSurface.copy(alpha = 0.82f),
+                    fontSize = 11,
+                    modifier = Modifier.padding(vertical = 3.dp)
                 )
             }
             detail?.let {
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    it,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.secondary
-                )
+                Spacer(Modifier.height(Dimens.lg))
+                MonoText(it, color = cs.secondary, fontSize = 11)
             }
-            Spacer(Modifier.height(20.dp))
-            Button(onClick = onRetry) { Text("重试") }
+            Spacer(Modifier.height(Dimens.xl))
+            androidx.compose.material3.TextButton(onClick = onRetry) {
+                Text("重试", style = MaterialTheme.typography.labelLarge, color = cs.primary)
+            }
         }
     }
 }
@@ -1043,9 +689,9 @@ private fun buildCommands(
 ): List<Command> = buildList {
     add(Command("run", "运行当前文件", ui.currentFile?.name ?: "未打开文件",
         Icons.Filled.PlayArrow) { vm.runCurrent() })
-    add(Command("save", "保存当前文件", "Ctrl-S 的移动版",
+    add(Command("save", "保存当前文件", "写入磁盘",
         Icons.Filled.Save) { vm.save() })
-    add(Command("find", "查找 / 替换（当前文件）", "计数跳转 + 单个/全部替换",
+    add(Command("find", "查找 / 替换", "计数跳转 + 单个/全部替换",
         Icons.Filled.Search) { vm.showFind(true) })
     add(Command("gsearch", "全局搜索", "在所有项目文件中查找",
         Icons.Filled.Search) { onCommand("gsearch") })
@@ -1054,56 +700,24 @@ private fun buildCommands(
     add(Command("ai", "AI 助手", "解释代码 / 修复报错 / 生成测试",
         Icons.Filled.AutoAwesome) { onCommand("ai") })
     add(Command("runconfig", "运行配置", "命令行参数 / Java 主类",
-        Icons.Filled.Tune) { onCommand("runconfig") })
-    add(Command("newproj", "新建项目", "6 个模板",
+        Icons.Outlined.Terminal) { onCommand("runconfig") })
+    add(Command("newproj", "新建项目", "${Templates.all.size} 个模板",
         Icons.Filled.Add) { onCommand("newproj") })
     add(Command("export", "导出当前文件", "通过 SAF 写到手机任意位置",
         Icons.Filled.FileUpload) { onCommand("export") })
     add(Command("diag", "环境自检", "Python / pip / Java / javac / Git",
-        Icons.Filled.Info) { onCommand("diag") })
+        Icons.Outlined.HealthAndSafety) { onCommand("diag") })
     add(Command("settings", "设置", "主题 / 字号 / 超时 / AI 端点",
         Icons.Filled.Settings) { onCommand("settings") })
     add(Command("about", "关于 DevTerminal", "版本与开源许可",
-        Icons.Filled.Info) { onCommand("about") })
+        Icons.Outlined.Info) { onCommand("about") })
     // 代码片段：手写麻烦、复用率高的骨架代码
     com.devterminal.engine.Snippets.all.forEach { s ->
         add(Command(
             "snip-${s.id}",
             "插入片段：${s.title}",
             s.description,
-            Icons.Filled.Code
+            Icons.Outlined.Terminal
         ) { vm.insertSymbol(s.code) })
     }
-}
-
-@Composable
-private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("新建项目") },
-        text = {
-            Column {
-                Templates.all.forEach { tpl ->
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                            .clickable { onCreate(tpl.id) }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Filled.Code, null,
-                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(10.dp))
-                        Column {
-                            Text(tpl.title, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text(tpl.description, fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
-    )
 }

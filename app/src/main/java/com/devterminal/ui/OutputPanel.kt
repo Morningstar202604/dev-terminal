@@ -6,20 +6,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -27,14 +22,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.devterminal.ui.components.MonoText
+import com.devterminal.ui.components.QuietHint
+import com.devterminal.ui.components.QuietIconButton
+import com.devterminal.ui.components.QuietTextField
+import com.devterminal.ui.components.StatusDot
+import com.devterminal.ui.theme.Dimens
+import com.devterminal.ui.theme.muted
 
 /**
- * 底部输出面板：实时显示运行结果，带状态徽标、交互输入行和操作按钮。
+ * 底部输出面板。
+ *
+ * 两处实质改进：
+ *  1. **改用 LazyColumn**：原来用 Column 一次性渲染全部输出行，跑一个每秒打印几百行的
+ *     程序时，每来一行都要重绘整个列表，掉帧非常明显；现在只渲染可视区域。
+ *  2. **头部去噪**：去掉「输出」标题和实心徽标，改为一个状态圆点 + 一行细字，
+ *     操作收敛为三个无背景图标。
  */
 @Composable
 fun OutputPanel(
@@ -50,143 +55,102 @@ fun OutputPanel(
     onShare: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val scroll = rememberScrollState()
+    val cs = MaterialTheme.colorScheme
+    val listState = rememberLazyListState()
     val inputFocus = remember { FocusRequester() }
+
     // 有新输出时自动滚到底部
-    LaunchedEffect(output.size) { scroll.animateScrollTo(scroll.maxValue) }
+    LaunchedEffect(output.size) {
+        if (output.isNotEmpty()) runCatching { listState.animateScrollToItem(output.size - 1) }
+    }
     // 运行开始后自动聚焦输入框，方便直接交互
     LaunchedEffect(inputVisible) {
         if (inputVisible) runCatching { inputFocus.requestFocus() }
     }
 
-    Column(modifier = modifier.background(MaterialTheme.colorScheme.surface)) {
+    Column(modifier = modifier.background(cs.background)) {
+        // ---------- 头部 ----------
         Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "输出",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
-            DbStatusBadge(running, exitCode)
+            if (running || exitCode != null) {
+                val (dot, label) = when {
+                    running -> cs.secondary to "运行中"
+                    exitCode == 0 -> cs.primary to "已完成"
+                    else -> cs.error to "退出码 $exitCode"
+                }
+                StatusDot(dot)
+                MonoText("  $label", color = cs.muted, fontSize = 10)
+            }
             Box(Modifier.weight(1f))
             if (onShare != null && output.isNotEmpty()) {
-                IconButton(onClick = onShare) {
-                    Icon(Icons.Filled.Share, contentDescription = "分享输出",
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                }
+                QuietIconButton(Icons.Filled.Share, "分享输出", onShare, size = 18.dp)
             }
-            IconButton(onClick = onRerun) {
-                Icon(Icons.Filled.PlayArrow, contentDescription = "重新运行",
-                    tint = MaterialTheme.colorScheme.primary)
-            }
-            IconButton(onClick = onClear) {
-                Icon(Icons.Filled.Delete, contentDescription = "清空输出",
-                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-            }
+            QuietIconButton(Icons.Filled.PlayArrow, "重新运行", onRerun,
+                tint = cs.primary, size = 18.dp)
+            QuietIconButton(Icons.Filled.Delete, "清空输出", onClear, size = 18.dp)
         }
+
+        // ---------- 输出区 ----------
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .background(MaterialTheme.colorScheme.background)
-                .verticalScroll(scroll)
-                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
             if (output.isEmpty()) {
-                Text(
-                    "点击上方 ▶ 运行当前文件，输出会显示在这里",
-                    fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
+                QuietHint(
+                    "点击上方 ▶ 运行，输出会显示在这里",
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                 )
             } else {
-                Column {
-                    output.forEach { line ->
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 4.dp)
+                ) {
+                    itemsIndexed(output, key = { index, _ -> index }) { _, line ->
                         val color = when {
-                            line.startsWith("[err]") || line.startsWith("[启动失败]") ->
-                                MaterialTheme.colorScheme.error
-                            line.startsWith("——") ->
-                                MaterialTheme.colorScheme.secondary
-                            line.startsWith("[DevTerminal]") || line.startsWith("[执行]") ->
-                                MaterialTheme.colorScheme.primary
-                            else -> MaterialTheme.colorScheme.onSurface
+                            line.startsWith("[err]") || line.startsWith("[启动失败]") -> cs.error
+                            line.startsWith("——") -> cs.muted
+                            line.startsWith("[DevTerminal]") || line.startsWith("[执行]") -> cs.muted
+                            line.startsWith("💡") -> cs.secondary
+                            else -> cs.onSurface.copy(alpha = 0.88f)
                         }
-                        Text(
-                            line,
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
-                            color = color
-                        )
+                        MonoText(line, color = color, fontSize = 11)
                     }
                 }
             }
         }
-        // 交互输入行：运行中显示，用于响应 Python input() 等
+
+        // ---------- 交互输入行 ----------
         if (inputVisible) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                    .padding(horizontal = Dimens.gutter, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "›",
-                    fontSize = 16.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(end = 6.dp)
-                )
-                OutlinedTextField(
+                QuietTextField(
                     value = inputDraft,
                     onValueChange = onInputChange,
                     modifier = Modifier
                         .weight(1f)
                         .focusRequester(inputFocus),
-                    placeholder = { Text("输入后回车发送…", fontSize = 12.sp) },
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        fontSize = 13.sp,
-                        fontFamily = FontFamily.Monospace
-                    ),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { onInputSend() })
+                    placeholder = "输入后回车发送给程序…",
+                    imeAction = ImeAction.Send,
+                    onImeAction = onInputSend,
+                    trailing = {
+                        QuietIconButton(
+                            Icons.AutoMirrored.Filled.Send, "发送输入", onInputSend,
+                            tint = cs.primary, size = 18.dp
+                        )
+                    }
                 )
-                IconButton(onClick = onInputSend) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "发送输入",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
             }
         }
     }
-}
-
-@Composable
-private fun DbStatusBadge(running: Boolean, exitCode: Int?) {
-    if (!running && exitCode == null) return
-    val label: String
-    val color: androidx.compose.ui.graphics.Color
-    if (running) {
-        label = "运行中"; color = MaterialTheme.colorScheme.secondary
-    } else if (exitCode == 0) {
-        label = "成功"; color = MaterialTheme.colorScheme.primary
-    } else {
-        label = "退出码 $exitCode"; color = MaterialTheme.colorScheme.error
-    }
-    Text(
-        "  $label  ",
-        fontSize = 11.sp,
-        color = color,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier
-            .padding(start = 8.dp)
-            .background(color.copy(alpha = 0.15f), androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-    )
 }

@@ -3,11 +3,13 @@ package com.devterminal.ui
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -15,30 +17,38 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.devterminal.project.FileNode
+import com.devterminal.ui.components.MonoText
+import com.devterminal.ui.components.QuietHint
+import com.devterminal.ui.components.SectionLabel
+import com.devterminal.ui.theme.Dimens
+import com.devterminal.ui.theme.faint
+import com.devterminal.ui.theme.muted
 
 /**
- * 左侧项目文件树。目录可展开/折叠，点击文件打开编辑。
+ * 左侧项目文件树。
+ *
+ * 视觉重构：
+ *  - 图标换成 **Outlined 线性风格**，比原来的实心图标轻一档，长时间看不累；
+ *  - 选中态用「左侧 2dp 竖条 + 极低透明度底色」——竖条比整行高亮更能精确指向，
+ *    也不会在文件多时形成一片色块；
+ *  - 目录不再显示第二个文件夹图标，箭头 + 文件夹各司其职。
  */
 @Composable
 fun FileTree(
@@ -51,23 +61,16 @@ fun FileTree(
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
 
     Column(modifier = modifier.fillMaxHeight()) {
-        Text(
+        SectionLabel(
             "项目",
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 13.sp,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-            modifier = Modifier.padding(start = 14.dp, top = 14.dp, bottom = 8.dp)
+            modifier = Modifier.padding(
+                start = Dimens.gutter, top = Dimens.lg, bottom = Dimens.sm
+            )
         )
         if (root == null) {
-            Text(
-                "加载中…",
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                modifier = Modifier.padding(14.dp)
-            )
+            QuietHint("加载中…", modifier = Modifier.padding(Dimens.gutter))
         } else {
             LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                // 顶层是项目目录，默认展开，不再单独显示根名
                 val topChildren = root.children.ifEmpty { listOf(root) }
                 items(topChildren, key = { it.path }) { node ->
                     TreeNode(
@@ -94,64 +97,71 @@ private fun TreeNode(
     onFileClick: (FileNode) -> Unit,
     onFileLongPress: (FileNode) -> Unit
 ) {
+    val cs = MaterialTheme.colorScheme
     val isOpen = expanded[node.path] ?: false
     val isSelected = node.path == selectedPath
 
-    Column {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                    else Color.Transparent,
-                    RoundedCornerShape(6.dp)
-                )
-                .combinedClickable(
-                    onClick = {
-                        if (node.isDirectory) expanded[node.path] = !isOpen
-                        else onFileClick(node)
-                    },
-                    onLongClick = { onFileLongPress(node) }
-                )
-                .padding(start = (8 + depth * 14).dp, top = 7.dp, bottom = 7.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (node.isDirectory) {
-                Icon(
-                    imageVector = if (isOpen) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    modifier = Modifier.size(16.dp)
-                )
-                Icon(
-                    imageVector = if (isOpen) Icons.Filled.FolderOpen else Icons.Filled.Folder,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp)
-                )
-            } else {
-                Spacer(Modifier.width(16.dp))
-                Icon(
-                    imageVector = Icons.Filled.Description,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-            Spacer(Modifier.width(6.dp))
-            Text(
-                node.name,
-                fontSize = 13.sp,
-                fontFamily = FontFamily.Monospace,
-                color = if (isSelected) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = Dimens.sm, end = Dimens.sm, top = 1.dp, bottom = 1.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isSelected) cs.primary.copy(alpha = 0.08f) else Color.Transparent)
+            .combinedClickable(
+                onClick = {
+                    if (node.isDirectory) expanded[node.path] = !isOpen
+                    else onFileClick(node)
+                },
+                onLongClick = { onFileLongPress(node) }
+            )
+            .padding(vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 选中指示竖条
+        Box(
+            Modifier
+                .width(2.dp)
+                .height(16.dp)
+                .background(if (isSelected) cs.primary else Color.Transparent, RoundedCornerShape(1.dp))
+        )
+        Spacer(Modifier.width((6 + depth * 14).dp))
+        if (node.isDirectory) {
+            Icon(
+                imageVector = if (isOpen) Icons.Filled.KeyboardArrowDown
+                else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = cs.faint,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                imageVector = if (isOpen) Icons.Outlined.FolderOpen else Icons.Outlined.Folder,
+                contentDescription = null,
+                tint = if (isSelected) cs.primary else cs.muted,
+                modifier = Modifier.size(16.dp)
+            )
+        } else {
+            Spacer(Modifier.width(18.dp))
+            Icon(
+                imageVector = Icons.Outlined.Description,
+                contentDescription = null,
+                tint = if (isSelected) cs.primary else cs.faint,
+                modifier = Modifier.size(15.dp)
             )
         }
-        if (node.isDirectory && isOpen) {
-            node.children.forEach { child ->
-                TreeNode(child, depth + 1, expanded, selectedPath, onFileClick, onFileLongPress)
-            }
+        Spacer(Modifier.width(8.dp))
+        MonoText(
+            node.name,
+            modifier = Modifier.weight(1f),
+            color = if (isSelected) cs.primary else cs.onSurface.copy(alpha = 0.86f),
+            fontSize = 12,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+    if (node.isDirectory && isOpen) {
+        node.children.forEach { child ->
+            TreeNode(child, depth + 1, expanded, selectedPath, onFileClick, onFileLongPress)
         }
     }
 }

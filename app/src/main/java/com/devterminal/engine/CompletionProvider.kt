@@ -68,6 +68,15 @@ object CompletionProvider {
         "Map" to listOf("put()", "get()", "containsKey()", "keySet()", "values()", "size()", "remove()")
     )
 
+    // 静态词表是常量，没必要每次弹补全都重建一遍（原来的实现每敲一次都新建上百个 Item）
+    private val PY_BASE: List<Item> by lazy { buildPyItems() }
+    private val JAVA_BASE: List<Item> by lazy { buildJavaItems() }
+
+    // 文档符号按「语言 + 文本哈希」缓存：正则扫全文很贵，但同一次编辑里文本大多没变
+    @Volatile private var docCacheKey = 0
+    @Volatile private var docCacheLang: Language? = null
+    @Volatile private var docCacheValue: List<Item> = emptyList()
+
     /**
      * 获取补全候选。
      * @param language 语言
@@ -79,10 +88,23 @@ object CompletionProvider {
         prefix: String,
         documentText: String
     ): List<Item> {
-        val base = when (language) {
-            Language.PYTHON -> pyItems() + extractPySymbols(documentText)
-            Language.JAVA -> javaItems() + extractJavaSymbols(documentText)
+        val key = 31 * language.hashCode() + documentText.hashCode()
+        val docSymbols = if (key == docCacheKey && language == docCacheLang) {
+            docCacheValue
+        } else {
+            val fresh = when (language) {
+                Language.PYTHON -> extractPySymbols(documentText)
+                Language.JAVA -> extractJavaSymbols(documentText)
+            }
+            docCacheKey = key
+            docCacheLang = language
+            docCacheValue = fresh
+            fresh
         }
+        val base = when (language) {
+            Language.PYTHON -> PY_BASE
+            Language.JAVA -> JAVA_BASE
+        } + docSymbols
         val p = prefix.trim()
         val filtered = if (p.isEmpty()) base else base.filter { it.text.startsWith(p, ignoreCase = true) }
         // 前缀完全匹配的排前面，其余按字母序
@@ -91,7 +113,7 @@ object CompletionProvider {
             .take(60)
     }
 
-    private fun pyItems(): List<Item> = buildList {
+    private fun buildPyItems(): List<Item> = buildList {
         PY_KEYWORDS.forEach { add(Item(it, Kind.KEYWORD, "关键字")) }
         PY_BUILTINS.forEach { add(Item(it, Kind.BUILTIN, "内置函数")) }
         PY_MODULES.forEach { add(Item(it, Kind.MODULE, "标准库")) }
@@ -101,7 +123,7 @@ object CompletionProvider {
         }
     }
 
-    private fun javaItems(): List<Item> = buildList {
+    private fun buildJavaItems(): List<Item> = buildList {
         JAVA_KEYWORDS.forEach { add(Item(it, Kind.KEYWORD, "关键字")) }
         JAVA_CLASSES.forEach { add(Item(it, Kind.CLASS, "常用类")) }
         JAVA_METHODS.forEach { (cls, methods) ->
@@ -124,7 +146,7 @@ object CompletionProvider {
                 items.add(Item(name, Kind.BUILTIN, "变量"))
             }
         }
-        return items
+        return items.toList()
     }
 
     /** 从 Java 文档里抽取类名与方法名 */
@@ -140,6 +162,6 @@ object CompletionProvider {
                     items.add(Item(name, Kind.METHOD, "本文件方法"))
                 }
             }
-        return items
+        return items.toList()
     }
 }

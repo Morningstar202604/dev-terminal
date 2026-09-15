@@ -2,24 +2,26 @@ package com.devterminal.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.devterminal.ui.components.MonoText
+import com.devterminal.ui.components.StatusDot
+import com.devterminal.ui.theme.faint
+import com.devterminal.ui.theme.muted
 
 /**
- * 底部状态栏：VS Code 的标配信息条。
- * 显示光标位置、语言、字符数与保存状态，让用户随时知道「我在哪、文件脏不脏」。
+ * 底部状态条。
+ *
+ * 重构要点：去掉原来的「色块 chip」——四五个带底色的小药丸在小屏幕上非常噪。
+ * 现在一律是等宽灰字 + `·` 分隔，只有「未保存」用一个色点提示，
+ * 因为那是唯一需要用户立刻注意的信息。
  */
 @Composable
 fun StatusBar(
@@ -30,39 +32,34 @@ fun StatusBar(
     dirty: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val cs = MaterialTheme.colorScheme
     Row(
         modifier = modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
+            .background(cs.surface)
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 10.dp, vertical = 3.dp),
+            .padding(horizontal = 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        StatusChip("Ln $line, Col $column")
-        StatusChip(language)
-        StatusChip("$charCount 字符")
-        Box(Modifier.padding(horizontal = 4.dp))
-        StatusChip(
-            if (dirty) "● 未保存" else "已保存",
-            highlight = dirty
-        )
+        MonoText("Ln $line, Col $column", color = cs.muted, fontSize = 10)
+        Separator()
+        MonoText(language, color = cs.muted, fontSize = 10)
+        Separator()
+        MonoText("$charCount 字符", color = cs.muted, fontSize = 10)
+        Spacer(Modifier.weight(1f))
+        if (dirty) {
+            StatusDot(cs.secondary)
+            MonoText(
+                " 未保存",
+                color = cs.secondary,
+                fontSize = 10
+            )
+        } else {
+            MonoText("已保存", color = cs.faint, fontSize = 10)
+        }
     }
 }
 
 @Composable
-private fun StatusChip(text: String, highlight: Boolean = false) {
-    val bg: Color = if (highlight) MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f)
-                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-    val fg: Color = if (highlight) MaterialTheme.colorScheme.secondary
-                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-    Text(
-        text,
-        fontSize = 10.sp,
-        fontFamily = FontFamily.Monospace,
-        color = fg,
-        modifier = Modifier
-            .padding(end = 6.dp)
-            .background(bg, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-    )
+private fun Separator() {
+    MonoText("  ·  ", color = MaterialTheme.colorScheme.faint, fontSize = 10)
 }

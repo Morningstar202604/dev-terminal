@@ -1,5 +1,6 @@
 package com.devterminal.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,13 +14,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,12 +29,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.devterminal.ui.components.QuietHint
+import com.devterminal.ui.theme.Dimens
+import com.devterminal.ui.theme.faint
+import com.devterminal.ui.theme.hairline
+import com.devterminal.ui.theme.muted
 
 /** 一条可执行命令（动作 + 元信息） */
 data class Command(
@@ -48,6 +59,9 @@ data class Command(
  *
  * 所有功能在这里都能一键到达——移动端放不下 N 层菜单，
  * 「搜索一切」是最省屏幕空间的交互。
+ *
+ * 视觉重构：搜索框去掉描边（无边框 + 底部一条发丝线），因为面板本身就是浮层，
+ * 再套一层描边输入框会显得很啰嗦；列表项图标降为中性色，只在文字上做层级。
  */
 @Composable
 fun CommandPalette(
@@ -55,6 +69,8 @@ fun CommandPalette(
     onDismiss: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
+    val focus = remember { FocusRequester() }
+    val cs = MaterialTheme.colorScheme
 
     val filtered = remember(query, commands) {
         if (query.isBlank()) commands
@@ -64,52 +80,76 @@ fun CommandPalette(
         }
     }
 
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(24.dp),
+            color = cs.surface,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(Modifier.padding(12.dp)) {
-                OutlinedTextField(
+            Column(Modifier.padding(top = Dimens.lg, bottom = Dimens.sm)) {
+                TextField(
                     value = query,
                     onValueChange = { query = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("搜索命令…（运行 / Git / AI / 插入 / 文件）", fontSize = 13.sp) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Dimens.lg)
+                        .focusRequester(focus),
+                    placeholder = {
+                        Text("搜索命令…", style = MaterialTheme.typography.bodyLarge,
+                            color = cs.faint)
+                    },
                     singleLine = true,
-                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
+                    textStyle = MaterialTheme.typography.bodyLarge,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        // 回车直接执行第一条，符合命令面板的肌肉记忆
+                        filtered.firstOrNull()?.let { onDismiss(); it.action() }
+                    }),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        cursorColor = cs.primary
+                    )
                 )
-                Spacer(Modifier.height(8.dp))
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().height(340.dp)
-                ) {
+                Spacer(Modifier.height(Dimens.sm))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(cs.hairline)
+                )
+                LazyColumn(modifier = Modifier.fillMaxWidth().height(340.dp)) {
                     items(filtered, key = { it.id }) { cmd ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(10.dp))
                                 .clickable { onDismiss(); cmd.action() }
-                                .padding(horizontal = 6.dp, vertical = 9.dp),
+                                .padding(horizontal = Dimens.lg, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
                                 cmd.icon, null,
-                                modifier = Modifier.size(19.dp),
-                                tint = MaterialTheme.colorScheme.primary
+                                modifier = Modifier.size(18.dp),
+                                tint = cs.muted
                             )
-                            Spacer(Modifier.width(12.dp))
+                            Spacer(Modifier.width(Dimens.md))
                             Column(Modifier.weight(1f)) {
                                 Text(
                                     cmd.title,
-                                    fontSize = 13.5.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium
                                 )
                                 if (cmd.subtitle.isNotBlank()) {
                                     Text(
                                         cmd.subtitle,
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = cs.muted
                                     )
                                 }
                             }
@@ -118,14 +158,10 @@ fun CommandPalette(
                     if (filtered.isEmpty()) {
                         item {
                             Box(
-                                Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                                Modifier.fillMaxWidth().padding(vertical = Dimens.xxl),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    "没有匹配「$query」的命令",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                                )
+                                QuietHint("没有匹配「$query」的命令")
                             }
                         }
                     }
