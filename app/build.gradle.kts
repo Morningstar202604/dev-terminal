@@ -1,18 +1,21 @@
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    // Kotlin 2.0 起，Compose 编译器不再由 kotlinCompilerExtensionVersion 指定，
+    // 而是作为独立的 Kotlin 编译器插件引入（K2 编译器）。
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
     namespace = "com.devterminal"
-    compileSdk = 34
+    compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
         applicationId = "com.devterminal"
-        minSdk = 24
-        targetSdk = 34
-        versionCode = 3
-        versionName = "0.3.0"
+        minSdk = libs.versions.minSdk.get().toInt()
+        targetSdk = libs.versions.targetSdk.get().toInt()
+        versionCode = 4
+        versionName = "0.4.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -27,7 +30,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-        // language-textmate 0.23.5 依赖 java.time 等需要 core desugaring
+        // language-textmate 依赖 java.time 等需要 core desugaring
         isCoreLibraryDesugaringEnabled = true
     }
 
@@ -40,11 +43,6 @@ android {
         buildConfig = true
     }
 
-    composeOptions {
-        // 与 Kotlin 1.9.24 匹配的 Compose 编译器版本
-        kotlinCompilerExtensionVersion = "1.5.14"
-    }
-
     packaging {
         resources {
             // SoraEditor 为 LGPL，排除其许可文件避免打包冲突（许可随源码提供）
@@ -55,27 +53,25 @@ android {
 
 dependencies {
     // core library desugaring（language-textmate 需要 java.time 等 API 脱糖）
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 
-    val composeBom = "2024.06.00"
-    implementation(platform("androidx.compose:compose-bom:$composeBom"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.activity:activity-compose:1.9.1")
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.3")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.3")
-    // 前台服务通知（兼容到 API 24）
-    implementation("androidx.core:core:1.13.1")
+    // Compose：版本由 BOM 统一约束
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.graphics)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.material.icons.extended)
+
+    // AndroidX 基础
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
 
     // ===== 代码编辑器：SoraEditor (LGPL-2.1) =====
     // 若产品闭源，需保证用户可替换该库（动态链接 + 提供目标文件）。
-    // 最新版本以 https://github.com/Rosemoe/sora-editor Releases 为准。
-    val sora = "0.23.5"
-    implementation("io.github.Rosemoe.sora-editor:editor:$sora")
-    implementation("io.github.Rosemoe.sora-editor:language-java:$sora")
-    implementation("io.github.Rosemoe.sora-editor:language-textmate:$sora")
+    implementation(libs.sora.editor)
+    implementation(libs.sora.editor.language.java)
+    implementation(libs.sora.editor.language.textmate)
 }

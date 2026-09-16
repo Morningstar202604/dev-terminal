@@ -1,0 +1,48 @@
+[versions]
+# ===== 构建工具链 =====
+# 说明：本沙箱内 Google 系域名不可达，依赖全部经国内镜像（阿里云 / 腾讯云）解析，
+# 版本上限以镜像站实际收录为准，均已逐一探测确认可拉取。
+agp = "8.7.3"
+kotlin = "2.0.21"
+coreLibraryDesugaring = "2.1.4"
+# ===== Android SDK =====
+compileSdk = "35"
+minSdk = "24"
+targetSdk = "35"
+
+# ===== AndroidX =====
+coreKtx = "1.15.0"
+activityCompose = "1.9.3"
+lifecycle = "2.8.7"
+composeBom = "2024.12.01"
+soraEditor = "0.23.6"
+
+[libraries]
+# --- Compose（版本由 BOM 统一约束）---
+compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+compose-ui = { group = "androidx.compose.ui", name = "ui" }
+compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
+compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
+
+# --- AndroidX 基础 ---
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
+
+# --- 代码编辑器：SoraEditor (LGPL-2.1) ---
+# 若产品闭源，需保证用户可替换该库（动态链接 + 提供目标文件）。
+sora-editor = { group = "io.github.Rosemoe.sora-editor", name = "editor", version.ref = "soraEditor" }
+sora-editor-language-java = { group = "io.github.Rosemoe.sora-editor", name = "language-java", version.ref = "soraEditor" }
+sora-editor-language-textmate = { group = "io.github.Rosemoe.sora-editor", name = "language-textmate", version.ref = "soraEditor" }
+
+# --- 核心库脱糖（language-textmate 依赖 java.time 等 API）---
+desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "coreLibraryDesugaring" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+# Kotlin 2.0+ 的 Compose 编译器插件（随 Kotlin 版本发布）
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
