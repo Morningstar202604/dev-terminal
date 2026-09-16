@@ -62,7 +62,8 @@ body{
 /* ============ 手机外框 ============ */
 .device{
   position: relative;
-  width: 390px; height: 844px;
+  width: min(390px, 100%);
+  height: min(844px, calc(100vh - 56px));
   background: #05070d;
   border: 10px solid #232833;
   border-radius: 44px;
@@ -397,10 +398,11 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
   background: rgba(3,7,18,.72); backdrop-filter: blur(3px);
   display:none; align-items:flex-start; justify-content:center;
   padding: 64px 16px 24px;
+  overflow: hidden;
 }
 .sheet.open{ display:flex; }
 .sheet-box{
-  width:100%; max-width:360px; max-height:78%;
+  width:100%; max-width:360px; max-height:78%; min-height:0;
   display:flex; flex-direction:column;
   background: var(--surface); border:1px solid var(--outline);
   border-radius:14px; overflow:hidden;
@@ -1367,6 +1369,13 @@ document.querySelectorAll("[data-close]").forEach(function(b){
 });
 document.querySelectorAll(".sheet").forEach(function(s){
   s.addEventListener("click", function(e){ if (e.target === s) s.classList.remove("open"); });
+});
+/* Esc 关闭最上层弹窗 / 抽屉 */
+document.addEventListener("keydown", function(e){
+  if (e.key !== "Escape") return;
+  const open = document.querySelector(".sheet.open");
+  if (open){ open.classList.remove("open"); e.preventDefault(); return; }
+  if (drawerOpen){ setDrawer(false); e.preventDefault(); }
 });
 
 /* ---- 命令面板 ---- */
