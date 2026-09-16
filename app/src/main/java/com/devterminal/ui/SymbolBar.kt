@@ -71,8 +71,11 @@ private fun SymbolKey(
             .background(if (accent) cs.primary.copy(alpha = 0.08f) else Color.Transparent)
             .border(1.dp, border, RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 11.dp)
-            .height(32.dp),
+            // 键帽加宽加高：这是整个界面里点击频率最高的控件，
+            // 32dp 高度在单手持机输入时经常点空或点到相邻键。
+            // 提到 38dp 高 + 更宽的内边距，误触率下降明显，视觉上仍保持轻盈。
+            .padding(horizontal = 13.dp)
+            .height(38.dp),
         contentAlignment = Alignment.Center
     ) {
         MonoText(

@@ -7,10 +7,12 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -65,6 +67,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -76,11 +79,13 @@ import com.devterminal.BuildConfig
 import com.devterminal.engine.Language
 import com.devterminal.project.Templates
 import com.devterminal.ui.components.ActionTile
+import com.devterminal.ui.components.rememberHaptics
 import com.devterminal.ui.components.Hairline
 import com.devterminal.ui.components.MonoText
 import com.devterminal.ui.components.QuietIconButton
 import com.devterminal.ui.components.SectionLabel
 import com.devterminal.ui.theme.Dimens
+import com.devterminal.ui.theme.Motion
 import com.devterminal.ui.theme.faint
 import com.devterminal.ui.theme.hairline
 import com.devterminal.ui.theme.muted
@@ -145,6 +150,16 @@ fun EditorScreen(vm: EditorViewModel) {
         ui.message?.let {
             snackbar.showSnackbar(it)
             vm.consumeMessage()
+        }
+    }
+
+    // 运行结束时给一次触觉反馈。
+    // 用户点完「运行」后视线通常还停在编辑器上，不会盯着底部输出面板；
+    // 一次轻震动就把「跑完了 / 挂了」传达到位，省掉一次低头。
+    val haptics = rememberHaptics()
+    LaunchedEffect(ui.running, ui.exitCode) {
+        if (!ui.running && ui.exitCode != null) {
+            if (ui.exitCode == 0) haptics.success() else haptics.failure()
         }
     }
 
@@ -345,7 +360,19 @@ fun EditorScreen(vm: EditorViewModel) {
             var outputHeight by remember(ui.settings.outputHeightDp) {
                 mutableStateOf(ui.settings.outputHeightDp.toFloat())
             }
-            Column(Modifier.padding(padding).fillMaxSize()) {
+            BoxWithConstraints(Modifier.padding(padding).fillMaxSize()) {
+            // 当前可用高度（已扣除顶栏与系统栏）。用于给输出面板动态设上限：
+            // 横屏 / 小屏上固定上限会让面板吃掉整个编辑器。
+            val availableHeight = maxHeight.value
+            // 换屏后旧高度可能已超过新上限，这里夹一次，避免布局瞬间被撑爆
+            LaunchedEffect(availableHeight) {
+                val cap = (availableHeight * 0.62f).coerceAtLeast(120f)
+                if (outputHeight > cap) {
+                    outputHeight = cap
+                    vm.persistOutputHeight(cap.roundToInt())
+                }
+            }
+            Column(Modifier.fillMaxSize()) {
                 if (ui.envState == EnvState.ERROR) {
                     Box(
                         Modifier
@@ -429,7 +456,12 @@ fun EditorScreen(vm: EditorViewModel) {
                             detectVerticalDragGestures(
                                 onDragEnd = { vm.persistOutputHeight(outputHeight.roundToInt()) }
                             ) { _, dragAmount ->
-                                outputHeight = (outputHeight + dragAmount).coerceIn(120f, 560f)
+                                // 上限按当前可用高度动态计算，而不是写死 560dp。
+                                // 横屏时屏幕总高约 360dp，固定 560dp 的上限等于没有上限——
+                                // 面板会把编辑器整个挤没，用户再也看不到自己的代码。
+                                val maxHeight = (availableHeight * 0.62f).coerceAtLeast(120f)
+                                outputHeight = (outputHeight + dragAmount)
+                                    .coerceIn(120f, maxHeight)
                             }
                         },
                     contentAlignment = Alignment.Center
@@ -476,6 +508,7 @@ fun EditorScreen(vm: EditorViewModel) {
                     charCount = ui.editorText.length,
                     dirty = ui.dirty
                 )
+            }
             }
         }
     }
@@ -617,12 +650,25 @@ private fun EditorEmptyState(
     onImport: () -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
+    // 入场动效：内容淡入并轻微上移。
+    // 空态是用户进入 App 看到的第一屏，加一点入场让首屏不显得"硬邦邦地砸出来"；
+    // 位移刻意做得很小（约 1/8 高度 ≈ 10dp），符合 Motion 里「克制」的约定。
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(hasProject) {
+        appear.snapTo(0f)
+        appear.animateTo(1f, Motion.enterSpec())
+    }
     Box(
         Modifier.fillMaxSize().background(cs.background),
         contentAlignment = Alignment.Center
     ) {
         Column(
-            Modifier.padding(horizontal = 32.dp),
+            Modifier
+                .padding(horizontal = 32.dp)
+                .graphicsLayer {
+                    alpha = appear.value
+                    translationY = (1f - appear.value) * 24f
+                },
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(

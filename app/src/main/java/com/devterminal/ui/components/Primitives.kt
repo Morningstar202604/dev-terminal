@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -109,7 +110,15 @@ fun MonoText(
     )
 }
 
-/** 无背景的图标按钮：不抢视觉焦点 */
+/**
+ * 无背景的图标按钮：不抢视觉焦点。
+ *
+ * 触控尺寸说明：图标本身可以画得很小（22dp 视觉上够清晰），但**点击区域**必须够大。
+ * 原先 contentPadding 为 8/6dp，加 22dp 图标总共才 38dp，低于 Material 与
+ * Android 无障碍指南要求的 48dp —— 顶栏图标在单手持机时很容易点空或者点错邻居。
+ * 这里用 [defaultMinSize] 把可点区撑到 48dp，同时保持图标视觉尺寸不变：
+ * 看起来没变，但手指落点范围大了一圈。
+ */
 @Composable
 fun QuietIconButton(
     icon: ImageVector,
@@ -123,7 +132,7 @@ fun QuietIconButton(
     TextButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier,
+        modifier = modifier.defaultMinSize(minWidth = Dimens.touch, minHeight = Dimens.touch),
         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
     ) {
         Icon(icon, contentDescription, modifier = Modifier.size(size), tint = tint)
