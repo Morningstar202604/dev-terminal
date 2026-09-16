@@ -17,6 +17,7 @@
   --primary:       #6366f1;
   --primary-dark:  #4338ca;
   --primary-soft:  rgba(99,102,241,.16);
+  --primary-hover: rgba(99,102,241,.26);
   --accent:        #22d3ee;
 
   --text:          #e5e7eb;
@@ -43,6 +44,56 @@
   --radius-sm: 8px;
   --shadow: 0 24px 60px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.4);
 }
+
+/* ---- 浅色主题：色值 1:1 对齐 app/.../theme/Theme.kt 的 QuietLight ----
+   通过 <html data-theme="light"> 切换（也可用 ?theme=light），
+   这样设计稿能同时反映 App 的深/浅两套配色。 */
+html[data-theme="light"]{
+  --bg:            #FAF9F7;   /* background */
+  --surface:       #FFFFFF;   /* surface */
+  --surface-2:     #F1EFEB;   /* surfaceVariant */
+  --surface-3:     #E9E6E1;   /* surfaceContainerHighest */
+  --outline:       #E3E0DA;
+  --outline-soft:  #EDEBE6;   /* outlineVariant */
+
+  --primary:       #4A63D9;
+  --primary-dark:  #2C3F8F;
+  --primary-soft:  rgba(74,99,217,.10);
+  --primary-hover: rgba(74,99,217,.20);
+  --accent:        #2F8F86;   /* secondary：浅色下青绿换成墨绿，保证对比度 */
+
+  --text:          #1B1F24;   /* onBackground */
+  --text-dim:      #676E77;   /* onSurfaceVariant */
+  --text-faint:    #8B9199;
+
+  --green:         #1C5B54;
+  --amber:         #9A6B15;
+
+  /* 浅色下的语法高亮：降饱和 + 加深，避免在白底上刺眼 */
+  --syn-kw:        #8B3FA8;
+  --syn-str:       #A6521F;
+  --syn-com:       #4E7A3E;
+  --syn-fn:        #7A6410;
+  --syn-num:       #0A6B57;
+  --syn-bi:        #1D6E8B;
+
+  --shadow: 0 20px 48px rgba(27,31,36,.16), 0 2px 8px rgba(27,31,36,.08);
+}
+html[data-theme="light"] body{
+  background:
+    radial-gradient(1200px 600px at 50% -10%, #ECEAF5 0%, transparent 70%),
+    #E7E5E1;
+}
+html[data-theme="light"] .device{
+  background: #FFFFFF;
+  border-color: #D9D5CE;
+  box-shadow: var(--shadow), 0 0 0 2px #F3F1EE inset;
+}
+html[data-theme="light"] .navbar i{ background:#C9C5BE; }
+html[data-theme="light"] .statusbar{ color:#1B1F24; }
+html[data-theme="light"] .output{ background:#FBFAF8; }
+html[data-theme="light"] .out-body{ color:#2A3038; }
+html[data-theme="light"] pre.code .ln:hover{ background: rgba(27,31,36,.045); }
 
 *{ box-sizing: border-box; margin:0; padding:0; }
 
@@ -299,11 +350,15 @@ body{
 .code-wrap::-webkit-scrollbar{ width:8px; height:8px; }
 .code-wrap::-webkit-scrollbar-thumb{ background:var(--surface-3); border-radius:4px; }
 .code-wrap::-webkit-scrollbar-thumb:hover{ background:var(--outline); }
+.code-wrap::-webkit-scrollbar-corner{ background:transparent; }
 
 pre.code{
   font-family: var(--mono); font-size:12.5px; line-height:20px;
+  /* 编辑器必须保持「一行源码 = 一行 DOM = 一个行号」的 1:1 关系，
+     否则 .gutter 的独立行号列会与代码行错位。长行靠 .code-wrap 横向滚动。
+     pre.code 用 width:max-content 撑开自身，让父容器真正产生横向滚动区。 */
   white-space:pre; tab-size:4; color: var(--text);
-  margin:0;
+  margin:0; width:max-content; min-width:100%;
 }
 pre.code .ln{ display:block; }
 pre.code .ln:hover{ background: rgba(255,255,255,.028); }
@@ -495,7 +550,9 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
 
 /* ============ 输出面板 ============ */
 .output{
-  flex: 0 0 auto; height: 216px;
+  /* 高度走 CSS 变量：默认 248px，矮屏由媒体查询改写，
+     拖拽时 JS 只改这个变量的行内值——三者互不打架。 */
+  flex: 0 0 auto; height: var(--out-h, 248px);
   display:flex; flex-direction:column;
   background: #080c16; min-height: 120px;
 }
@@ -521,13 +578,26 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
 .badge.running{ color:var(--amber); background: rgba(251,191,36,.14); }
 .badge.running .pip{ animation: pulse 1s ease-in-out infinite; }
 .badge.ok{ color:var(--green); background: rgba(52,211,153,.14); }
+.badge.err{ color:#f87171; background: rgba(248,113,113,.14); }
 @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.25} }
 
 .out-head .spacer{ flex:1; }
 
+.out-body .l.jump{
+  cursor:pointer; border-radius:3px; padding:0 3px; margin:0 -3px;
+  transition: background .14s ease;
+}
+/* 可点击的报错行右侧给一个「跳转」小标，比整行虚下划线更明确 */
+.out-body .l.jump::after{
+  content:"↗"; margin-left:6px; font-size:10px;
+  color: rgba(248,113,113,.55); vertical-align:1px;
+}
+.out-body .l.jump:hover{ background: rgba(248,113,113,.14); }
+.out-body .l.jump:hover::after{ color: rgb(248,113,113); }
 .out-body{
   flex:1 1 auto; min-height:0; overflow-y:auto;
-  padding: 10px 14px;
+  /* 底部多留 6px：输出末尾的「运行结束」行贴底时不会被输入框视觉上吞掉 */
+  padding: 10px 14px 16px;
   font-family: var(--mono); font-size:12.5px; line-height:19px;
   color: #cbd5e1;
   scrollbar-width: thin; scrollbar-color: var(--outline) transparent;
@@ -591,6 +661,45 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
 }
 .navbar i{ width:104px; height:4px; border-radius:2px; background:#3f4a5c; }
 
+/* ============ 首启引导页 ============ */
+/* 从状态栏下方开始铺满，保留顶部时间/信号，避免看起来像渲染故障 */
+.onboard{
+  position:absolute; left:0; right:0; top:32px; bottom:0; z-index:50;
+  background: var(--bg);
+  display:none; align-items:center; justify-content:center;
+}
+.onboard.show{ display:flex; }
+.ob-box{
+  display:flex; flex-direction:column; align-items:center;
+  padding: 0 34px; text-align:center;
+  animation: obIn .34s cubic-bezier(.05,.7,.1,1) both;
+}
+@keyframes obIn{
+  from{ opacity:0; transform: translateY(10px); }
+  to{ opacity:1; transform: none; }
+}
+.ob-icon{ width:30px; height:30px; color: var(--accent); opacity:.78; margin-bottom:18px; }
+.ob-title{ font-size:15px; font-weight:700; color: var(--text); letter-spacing:.2px; }
+.ob-sub{
+  margin-top:7px; font-size:11.5px; line-height:1.65;
+  color: var(--text-faint); max-width:250px;
+}
+.ob-primary{
+  margin-top:26px; display:inline-flex; align-items:center; gap:8px;
+  padding:11px 20px; border-radius:12px; border:none; cursor:pointer;
+  background: var(--primary-soft); color: var(--primary);
+  font-family: var(--ui); font-size:13px; font-weight:600;
+  transition: background .16s ease;
+}
+.ob-primary svg{ width:16px; height:16px; }
+.ob-primary:hover{ background: var(--primary-hover); }
+.ob-link{
+  margin-top:10px; background:none; border:none; cursor:pointer;
+  color: var(--text-faint); font-family: var(--ui); font-size:11.5px;
+  padding:6px 10px; border-radius:8px;
+}
+.ob-link:hover{ color: var(--text-dim); }
+
 /* 提示条 */
 .toast{
   position:absolute; left:50%; bottom:16px; transform: translate(-50%, 14px);
@@ -604,8 +713,50 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
 }
 .toast.show{ opacity:1; visibility:visible; transform: translate(-50%, 0); }
 
-@media (prefers-reduced-motion: reduce){
-  *{ animation-duration:.01ms !important; transition-duration:.01ms !important; }
+@media (prefers-reduced-motion: reduce){  *{ animation-duration:.01ms !important; transition-duration:.01ms !important; }
+}
+
+/* 横屏 / 矮屏：整体等比压缩，保证编辑器始终有可用高度。
+   这里不做左右分栏——真机上的分栏由 App 侧 BoxWithConstraints 动态算法处理，
+   设计稿只负责如实反映「矮屏下各区域如何让位」。 */
+/* 矮屏阈值取 700px：640px 高的小屏（常见 360x640）也必须压缩输出面板，
+   否则固定 248px 会把编辑器压到 100px 出头，基本没法改代码。 */
+@media (max-height: 700px){
+  /* 只压缩各区域，不锁死设备高度——设备高度仍跟随视口 */
+  .output{ --out-h: 124px; min-height: 88px; }
+  .editor{ min-height: 88px; }
+  .symbar{ padding: 3px 5px; }
+  .sym{ height: 26px; min-width: 28px; font-size: 12.5px; }
+  .gutter{ width: 40px; }
+  .gutter span{ font-size: 11.5px; line-height: 18px; }
+  pre.code{ font-size: 11.5px; line-height: 18px; }
+  .out-body{ font-size: 11.5px; line-height: 17px; }
+  .appbar{ height: 46px; }
+}
+/* 横屏：设备框转成横向比例，并把输出面板移到右侧。
+   竖屏下这些区域是一条竖直流水线；横屏高度只剩 390px，若继续竖排，
+   编辑器会被压到看不见代码。改成两栏后，编辑器拿到左侧全部高度。 */
+@media (orientation: landscape) and (max-height: 700px){
+  .device{ width: min(844px, 100%); height: min(390px, calc(100vh - 40px)); }
+  .body{
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    grid-template-rows: auto 1fr auto auto;
+    grid-template-areas:
+      "tabs    out"
+      "editor  out"
+      "symbar  out"
+      "split   out"
+      "status  out";
+  }
+  /* 抽屉与遮罩是绝对定位，脱离网格流，不受影响 */
+  .tabbar   { grid-area: tabs; }
+  .editor   { grid-area: editor; min-height: 0; }
+  .symbar   { grid-area: symbar; }
+  .splitter { grid-area: split; display: none; }
+  .output   { grid-area: out; --out-h: 100%; height: auto; min-height: 0;
+              border-left: 1px solid var(--outline-soft); }
+  .ide-status{ grid-area: status; }
 }
 </style>
 </head>
@@ -820,7 +971,7 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
     <div class="splitter" id="splitter" title="拖动调整输出面板高度"></div>
 
     <!-- 输出面板 -->
-    <section class="output" id="output" style="height:216px">
+    <section class="output" id="output">
       <div class="out-head">
         <span class="title">输出</span>
         <span class="badge idle" id="badge"><span class="pip"></span><span id="badgeText">空闲</span></span>
@@ -927,6 +1078,24 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
       <div class="sheet-body" id="gsList"></div>
     </div>
   </div>
+
+  <!-- ============ 首启引导（对应 EditorEmptyState） ============ -->
+  <div class="onboard" id="onboard">
+    <div class="ob-box">
+      <svg class="ob-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="4" width="20" height="16" rx="2"/>
+        <path d="M7 9l3 3-3 3M13 15h4"/>
+      </svg>
+      <div class="ob-title">写代码，不用联网</div>
+      <div class="ob-sub">Python 与 Java 的解释器、编译器和 Git 都已内置，离线随时随地跑代码</div>
+      <button class="ob-primary" id="obNew">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        <span>新建项目</span>
+      </button>
+      <button class="ob-link" id="obImport">或导入手机里的现有代码</button>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 </div>
 
@@ -1245,12 +1414,65 @@ function appendLine(cls, text){
   const span = document.createElement("span");
   span.className = "l" + (cls ? " " + cls : "");
   span.textContent = text;
+  // 与 Kotlin 侧 parseErrorLine 逻辑一致：能解析出行号的行才可点，
+  // 点击后光标跳到该行（对应 CodeEditorView 的 scrollToLine）。
+  const jumpLine = parseErrorLine(text);
+  if (jumpLine !== null){
+    span.classList.add("jump");
+    span.title = "点击跳到第 " + (jumpLine + 1) + " 行";
+    span.addEventListener("click", function(){ jumpToLine(jumpLine, text); });
+  }
   outBody.appendChild(span);
   outBody.scrollTop = outBody.scrollHeight;
   return span;
 }
 
+/* 报错行解析：与 app/.../OutputPanel.kt 的 parseErrorLine 保持一致 */
+const PY_TRACE = /line\s+(\d+)/;
+const PATH_LINE = /[\w./\\-]+\.\w{1,6}:(\d+)/;
+function parseErrorLine(line){
+  if (line.indexOf("💡") === 0 || line.indexOf("——") === 0) return null;
+  let m = PY_TRACE.exec(line);
+  if (m) return Math.max(parseInt(m[1],10) - 1, 0);
+  m = PATH_LINE.exec(line);
+  if (m) return Math.max(parseInt(m[1],10) - 1, 0);
+  return null;
+}
+
+/* 点击报错行 → 编辑器滚动到该行并高亮该行。
+   注意：绝不能重建 #code 的 innerHTML——那会把 tokenize 生成的语法高亮 span 全部冲掉。
+   正确做法是在 renderEditor 已经生成好的 .ln 行上挂 .hi 类（与行号高亮同一套样式）。 */
+function jumpToLine(line, text){
+  const codeEl = $("code");
+  if (!codeEl) return;
+  const rows = codeEl.querySelectorAll(".ln");
+  if (line < 0 || line >= rows.length) return;
+
+  // 清掉旧高亮 + 旧行号强调，再落到目标行
+  codeEl.querySelectorAll(".ln.hi").forEach(function(e){ e.classList.remove("hi"); });
+  // 行号在独立的 gutterEl 里，必须查 gutterEl 而不是 codeEl
+  gutterEl.querySelectorAll("span").forEach(function(e){ e.classList.remove("cur"); });
+  rows[line].classList.add("hi");
+  const g = gutterEl.querySelectorAll("span")[line];
+  if (g) g.classList.add("cur");
+
+  // 行号栏与代码栏是两个独立滚动容器，必须同步滚动，否则行号会错位
+  const target = rows[line].offsetTop - codeWrap.clientHeight / 2 + rows[line].offsetHeight / 2;
+  const top = Math.max(target, 0);
+  codeWrap.scrollTo({ top: top, behavior: "smooth" });
+  if (gutterEl) gutterEl.scrollTop = codeWrap.scrollTop;
+
+  toast("已跳到第 " + (line + 1) + " 行");
+}
+
 function clearOutput(){ outBody.innerHTML = ""; }
+
+/* 首启引导：与 Kotlin 侧一致——没有项目时展示，选完动作后消失 */
+function showOnboard(on){
+  const el = $("onboard");
+  if (!el) return;
+  el.classList.toggle("show", !!on);
+}
 
 function setBadge(state, text){
   badge.className = "badge " + state;
@@ -1271,6 +1493,14 @@ function toast(msg){
 }
 
 /* 抽屉底部按钮：原型里只做提示，真实 App 弹对应对话框 */
+$("obNew").addEventListener("click", function(){
+  showOnboard(false);
+  toast("新项目 · 6 个模板：Python 空白/交互/多模块/数据处理、Java 单文件/多文件");
+});
+$("obImport").addEventListener("click", function(){
+  showOnboard(false);
+  toast("导入 · 通过系统文件选择器把手机里的文件复制进项目");
+});
 $("btnNewProject").addEventListener("click", function(){
   setDrawer(false);
   toast("新项目 · 6 个模板：Python 空白/交互/多模块/数据处理、Java 单文件/多文件");
@@ -1514,6 +1744,8 @@ $("btnGsearch").addEventListener("click", function(){ openSheet("gsSheet"); rend
    ================================================================== */
 const SECRET = 73;      // 与 Java 版一致，便于演示
 let running = false;
+// 记录每个文件被运行过几次，用于第二次运行时演示报错分支
+let runCount = {};
 let session = null;     // 当前会话状态
 let timers = [];
 
@@ -1542,7 +1774,17 @@ const PROGRAMS = {
       { c: "",     t: "280571172992510140037611932413038677189525" },
       { c: "hint", t: "进程已退出（退出码 0）" }
     ],
-    interactive: false
+    interactive: false,
+    // 再次点击「运行」时的第二段脚本：演示写错代码 → 报错 → 点报错行跳回源码
+    retry: [
+      { c: "",     t: "[fib] 耗时 0.48 ms" },
+      { c: "err",  t: "Traceback (most recent call last):" },
+      { c: "err",  t: '  File "utils.py", line 9, in <module>' },
+      { c: "err",  t: "    return fib(n - 1) + fib(n - 2)" },
+      { c: "err",  t: "RecursionError: maximum recursion depth exceeded" },
+      { c: "sys",  t: "—— 运行结束，退出码 1 (0.31s)", delay: 120 },
+      { c: "hint", t: "💡 点击带 ↗ 的报错行，可直接跳到对应源码位置", delay: 260 }
+    ]
   }
 };
 
@@ -1579,6 +1821,10 @@ function run(){
   const prog = PROGRAMS[activeFile];
   if (!prog) return;
 
+  // 同一文件第二次运行时，若有 retry 脚本就播它（用于演示报错等分支场景）
+  const steps = (runCount[activeFile] > 0 && prog.retry) ? prog.retry : prog.prelude;
+  runCount[activeFile] = (runCount[activeFile] || 0) + 1;
+
   running = true;
   setRunning(true);
   setBadge("running", "运行中");
@@ -1592,7 +1838,7 @@ function run(){
 
   later(function(){
     clearOutput();
-    playScript(prog.prelude, function(){
+    playScript(steps, function(){
       running = false;
       setRunning(false);
 
@@ -1604,6 +1850,9 @@ function run(){
         stdin.placeholder = "输入 1-100 的数字后回车…";
         stdin.focus();
         showPendingCaret();
+      } else if (steps === prog.retry){
+        setBadge("err", "失败");
+        lockInput("程序已结束，再次运行试试…");
       } else {
         setBadge("ok", "成功");
         lockInput("程序已结束，再次运行试试…");
@@ -1714,7 +1963,8 @@ stdin.addEventListener("keydown", function(e){
     const maxH = bodyEl.clientHeight - 140;
     let h = startH + dy;
     h = Math.max(110, Math.min(h, maxH));
-    output.style.height = h + "px";
+    // 写 CSS 变量而不是 height，这样媒体查询仍能作为约束基线生效
+    output.style.setProperty("--out-h", h + "px");
   });
 
   window.addEventListener("mouseup", function(){
@@ -1747,6 +1997,16 @@ appendLine("hint", "DevTerminal · 离线 Python / Java 运行环境");
 appendLine("hint", "点击右上角「运行」开始，配合下方输入框交互");
 setBadge("idle", "空闲");
 lockInput();
+
+/* 首启引导：仅在没有项目时出现（对应 Kotlin 的 EditorEmptyState）。
+   设计稿里已有 main.py 演示项目，所以默认收起；
+   加 ?onboard=1 可强制展示，用于截图。 */
+showOnboard(/[?&]onboard=1/.test(location.search));
+
+/* 主题：?theme=light 切到浅色（对齐 App 的 QuietLight），默认深色（QuietDark） */
+if (/[?&]theme=light/.test(location.search)){
+  document.documentElement.setAttribute("data-theme", "light");
+}
 
 })();
 </script>
