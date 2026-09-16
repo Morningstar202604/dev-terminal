@@ -2,6 +2,62 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.4.1] — 2026-09-16
+
+### 新增
+- **横屏两栏布局**：编辑器在左（64%）、输出面板在右（36%），中间细分隔线；
+  内容抽成局部 Composable 复用，拖拽把手仅在竖屏显示。
+  设计稿的 grid 方案（design/mockup.html）先行验证过收益：横屏下代码可见高度从 0 恢复到 180dp
+- **JUnit 单元测试**：`ParseErrorLineTest` 17 个用例锁定报错行解析
+  （Python traceback / javac / flake8 / 路径前缀 / 版本号与时间戳误报 / Int 溢出等），
+  与 `tools/tests/test_parse_error_line.py` 用例一一对应，跑 `./gradlew :app:testDebugUnitTest`
+
+### 构建
+- versionCode 4 → 5（0.4.0 的 APK 无横屏两栏，避免同版本号两种内容）
+- 排查：多个 Gradle daemon 并存时会复发 usrtar.zip 的 MD5 哈希竞态
+  （本次发生在 `packageDebug`），`./gradlew --stop` 后单实例构建即恢复稳定
+
+## [0.4.0] — 2026-09-16
+
+### 构建（技术栈全面升级）
+- **Kotlin 2.0.21（K2 编译器）**：Compose 编译器改为独立插件 `org.jetbrains.kotlin.plugin.compose`，
+  移除 `kotlinCompilerExtensionVersion`
+- **AGP 8.7.3 / Gradle 8.11.1 / compileSdk & targetSdk 35**（Android 15）
+- **Compose BOM 2024.12.01**（material3 1.3.1）、SoraEditor 0.23.6、
+  core-ktx 1.15.0 / activity-compose 1.9.3 / lifecycle 2.8.7、desugar 2.1.4
+- **Version Catalog**（`gradle/libs.versions.toml`）：全部依赖版本集中管理
+- `org.gradle.parallel=false`：规避 Gradle 8.11 并行执行对 461MB usrtar.zip 的哈希读取竞态
+
+### 新增（使用逻辑）
+- **报错行可点击跳转**：输出面板解析 `line N` 与 `file.ext:N` 两类报错行（0 基换算、
+  跳过 💡 提示与 —— 分隔线），点击后编辑器光标直达对应行；
+  `ScrollToLineRequest` 用 seq 自增保证连点同一行也响应
+- **首启引导空态**：无项目时展示「写代码，不用联网」+ 新建 / 导入双入口；
+  有项目未开文件时改为「选一个文件开始」
+- **弹窗状态收敛为 `Overlay` 密封接口**：替换 9 个独立布尔值，
+  编译期保证同一时刻至多一个面板
+- **返回键三层处理**：搜索面板 → 抽屉 → 弹窗，逐层退出
+
+### 变更（前端）
+- **Motion 动效体系**（`theme/Motion.kt`）：统一时长（120/220/320ms）与缓动曲线
+  （Emphasized Decelerate / Accelerate），拖动跟随用 NoBouncy spring
+- **触觉反馈**（`components/Haptics.kt`）：运行结束按退出码区分成功（CONFIRM，
+  API<30 回退 VIRTUAL_KEY）/ 失败（LONG_PRESS）
+- **触控尺寸**：图标按钮最小 48dp，符号栏键帽 32→38dp
+- 输出面板高度上限改为按可用高度 62% 动态计算（横屏 / 小屏不再挤没编辑器）
+
+### 文件管理
+- 文件树默认展开第一层，折叠目录显示子项数量
+- 抽屉标题栏提示「长按可重命名」
+
+### 设计
+- `design/mockup.html` 与 App 行为对齐：首启引导可视化、报错行点击跳转演示
+  （utils.py 第二次运行）、浅色主题（色值逐项对齐 `Theme.kt` 的 QuietLight）
+- 修复设计稿 4 处缺陷：跳转重建 DOM 冲掉语法高亮、行号高亮残留、
+  引导页盖住状态栏、行内高度压过媒体查询
+- 补齐响应式媒体查询：矮屏压缩输出面板、横屏两栏网格
+- 新增 21 张高清截图（深色 15 + 浅色 6）、33.6s 交互录屏 `design/demo.mp4`
+
 ## [0.3.0] — 2026-09-14
 
 ### 新增

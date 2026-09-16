@@ -5,6 +5,7 @@
 agp = "8.7.3"
 kotlin = "2.0.21"
 coreLibraryDesugaring = "2.1.4"
+junit = "4.13.2"
 # ===== Android SDK =====
 compileSdk = "35"
 minSdk = "24"
@@ -40,6 +41,9 @@ sora-editor-language-textmate = { group = "io.github.Rosemoe.sora-editor", name 
 
 # --- 核心库脱糖（language-textmate 依赖 java.time 等 API）---
 desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "coreLibraryDesugaring" }
+
+# --- 单元测试 ---
+junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

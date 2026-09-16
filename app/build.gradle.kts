@@ -14,8 +14,8 @@ android {
         applicationId = "com.devterminal"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.4.1"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -74,4 +74,7 @@ dependencies {
     implementation(libs.sora.editor)
     implementation(libs.sora.editor.language.java)
     implementation(libs.sora.editor.language.textmate)
+
+    // 单元测试：纯 JVM 逻辑（如报错行解析）不依赖 Android 框架，可直接跑
+    testImplementation(libs.junit)
 }

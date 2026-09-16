@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -372,7 +373,13 @@ fun EditorScreen(vm: EditorViewModel) {
                     vm.persistOutputHeight(cap.roundToInt())
                 }
             }
-            Column(Modifier.fillMaxSize()) {
+            // ---- 横竖屏共用同一份内容、只是摆放不同 ----
+            // 内容抽成局部 Composable（捕获 ui/vm 等闭包变量），避免两份拷贝日后走样。
+            // 横屏下编辑器与输出面板左右分栏：横屏最缺的是纵向空间，
+            // 继续上下排布会把编辑器挤到看不见代码（设计稿 grid 方案已验证过两栏收益）。
+            val isLandscape = maxWidth > maxHeight
+
+            val envBanner: @Composable ColumnScope.() -> Unit = {
                 if (ui.envState == EnvState.ERROR) {
                     Box(
                         Modifier
@@ -383,6 +390,9 @@ fun EditorScreen(vm: EditorViewModel) {
                         MonoText(ui.envMessage, color = cs.error, fontSize = 11)
                     }
                 }
+            }
+
+            val editorArea: @Composable ColumnScope.() -> Unit = {
                 FileTabs(
                     tabs = ui.openTabs,
                     activePath = ui.currentFile?.absolutePath,
@@ -446,33 +456,9 @@ fun EditorScreen(vm: EditorViewModel) {
                     onBackspace = { vm.backspaceSymbol() }
                 )
                 }
-                // 拖拽把手：一条细横线，暗示「这里可以拖动」，不加背景色
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(14.dp)
-                        .background(cs.surface)
-                        .pointerInput(Unit) {
-                            detectVerticalDragGestures(
-                                onDragEnd = { vm.persistOutputHeight(outputHeight.roundToInt()) }
-                            ) { _, dragAmount ->
-                                // 上限按当前可用高度动态计算，而不是写死 560dp。
-                                // 横屏时屏幕总高约 360dp，固定 560dp 的上限等于没有上限——
-                                // 面板会把编辑器整个挤没，用户再也看不到自己的代码。
-                                val maxHeight = (availableHeight * 0.62f).coerceAtLeast(120f)
-                                outputHeight = (outputHeight + dragAmount)
-                                    .coerceIn(120f, maxHeight)
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        Modifier
-                            .width(32.dp)
-                            .height(3.dp)
-                            .background(cs.outline.copy(alpha = 0.7f), RoundedCornerShape(2.dp))
-                    )
-                }
+            }
+
+            val outputArea: @Composable (Modifier) -> Unit = { mod ->
                 OutputPanel(
                     output = ui.output,
                     running = ui.running,
@@ -498,8 +484,67 @@ fun EditorScreen(vm: EditorViewModel) {
                         // 报错行 → 编辑器光标。seq 自增保证连点同一行也会重新执行。
                         scrollToLine = ScrollToLineRequest(line, (scrollToLine?.seq ?: 0L) + 1L)
                     },
-                    modifier = Modifier.fillMaxWidth().height(outputHeight.dp)
+                    modifier = mod
                 )
+            }
+
+            if (isLandscape) {
+                Column(Modifier.fillMaxSize()) {
+                    envBanner()
+                    Row(Modifier.fillMaxWidth().weight(1f)) {
+                        Column(Modifier.weight(0.64f).fillMaxHeight()) { editorArea() }
+                        // 两栏之间的细分隔线，与 Hairline 同一语言
+                        Box(
+                            Modifier
+                                .width(1.dp)
+                                .fillMaxHeight()
+                                .background(cs.outlineVariant)
+                        )
+                        Column(Modifier.weight(0.36f).fillMaxHeight()) {
+                            outputArea(Modifier.fillMaxWidth().fillMaxHeight())
+                        }
+                    }
+                    Hairline()
+                    StatusBar(
+                        line = ui.cursorLine,
+                        column = ui.cursorColumn,
+                        language = ui.languageLabel,
+                        charCount = ui.editorText.length,
+                        dirty = ui.dirty
+                    )
+                }
+            } else {
+            Column(Modifier.fillMaxSize()) {
+                envBanner()
+                editorArea()
+                // 拖拽把手：一条细横线，暗示「这里可以拖动」，不加背景色
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(14.dp)
+                        .background(cs.surface)
+                        .pointerInput(Unit) {
+                            detectVerticalDragGestures(
+                                onDragEnd = { vm.persistOutputHeight(outputHeight.roundToInt()) }
+                            ) { _, dragAmount ->
+                                // 上限按当前可用高度动态计算，而不是写死 560dp。
+                                // 矮屏（横屏 / 小屏）上固定 560dp 的上限等于没有上限——
+                                // 面板会把编辑器整个挤没，用户再也看不到自己的代码。
+                                val maxHeight = (availableHeight * 0.62f).coerceAtLeast(120f)
+                                outputHeight = (outputHeight + dragAmount)
+                                    .coerceIn(120f, maxHeight)
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        Modifier
+                            .width(32.dp)
+                            .height(3.dp)
+                            .background(cs.outline.copy(alpha = 0.7f), RoundedCornerShape(2.dp))
+                    )
+                }
+                outputArea(Modifier.fillMaxWidth().height(outputHeight.dp))
                 Hairline()
                 StatusBar(
                     line = ui.cursorLine,
@@ -508,6 +553,7 @@ fun EditorScreen(vm: EditorViewModel) {
                     charCount = ui.editorText.length,
                     dirty = ui.dirty
                 )
+            }
             }
             }
         }

@@ -9,9 +9,10 @@
 写紧了又会让真实的报错行点不动。两种错都不会让编译失败，只会在真机上
 表现为「有时候能跳有时候不能」，所以用测试锁住。
 
-用 Python 复刻 Kotlin 的实现而非跑 Kotlin 测试，是为了不引入
-额外的测试框架依赖（本沙箱 Google 系域名不可达，拉测试库成本高）。
-两边语义一致，改动 Kotlin 侧时同步这里即可。
+用 Python 复刻 Kotlin 的实现，作为无构建环境下的快速回归工具
+（正式版本是 app/src/test/java/com/devterminal/ui/ParseErrorLineTest.kt，
+跑 `./gradlew :app:testDebugUnitTest`）。两边语义一致，
+改动 Kotlin 侧时同步这里即可。
 
 用法：python3 tools/tests/test_parse_error_line.py
 """
