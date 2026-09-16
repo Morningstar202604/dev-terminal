@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
@@ -49,6 +50,11 @@ import com.devterminal.ui.theme.muted
  *  - 选中态用「左侧 2dp 竖条 + 极低透明度底色」——竖条比整行高亮更能精确指向，
  *    也不会在文件多时形成一片色块；
  *  - 目录不再显示第二个文件夹图标，箭头 + 文件夹各司其职。
+ *
+ * 使用逻辑修正：
+ *  - **默认展开前两层**。原先全部折叠，用户新建项目后看到的是一排关闭的文件夹，
+ *    得挨个点开才知道里面有什么——「打开 App 就能看到文件」是文件管理的最低要求。
+ *  - 给目录加上「文件数量」的次要信息，不用点开就能判断值不值得展开。
  */
 @Composable
 fun FileTree(
@@ -58,15 +64,34 @@ fun FileTree(
     onFileLongPress: (FileNode) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val expanded = remember { mutableStateMapOf<String, Boolean>() }
+    val cs = MaterialTheme.colorScheme
+    val expanded = remember(root?.path) {
+        mutableStateMapOf<String, Boolean>().apply {
+            // 首屏就把浅层目录展开：让用户一进来就能看到真实文件
+            root?.children?.forEach { child ->
+                if (child.isDirectory) put(child.path, true)
+            }
+        }
+    }
 
     Column(modifier = modifier.fillMaxHeight()) {
-        SectionLabel(
-            "项目",
-            modifier = Modifier.padding(
-                start = Dimens.gutter, top = Dimens.lg, bottom = Dimens.sm
-            )
-        )
+        Row(
+            Modifier.fillMaxWidth().padding(start = Dimens.gutter, top = Dimens.lg, bottom = Dimens.sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SectionLabel("项目")
+            if (root != null) {
+                Spacer(Modifier.weight(1f))
+                // 把「长按可重命名/删除」这个隐蔽手势明说出来。
+                // 原先没有任何提示，用户基本不可能自己发现。
+                Text(
+                    "长按可重命名",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = cs.faint,
+                    modifier = Modifier.padding(end = Dimens.gutter)
+                )
+            }
+        }
         if (root == null) {
             QuietHint("加载中…", modifier = Modifier.padding(Dimens.gutter))
         } else {
@@ -158,6 +183,15 @@ private fun TreeNode(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+        // 折叠的目录给出文件数量，不用展开就能判断值不值得点
+        if (node.isDirectory && !isOpen && node.children.isNotEmpty()) {
+            MonoText(
+                "${node.children.size}",
+                color = cs.faint,
+                fontSize = 10,
+                modifier = Modifier.padding(end = 2.dp)
+            )
+        }
     }
     if (node.isDirectory && isOpen) {
         node.children.forEach { child ->

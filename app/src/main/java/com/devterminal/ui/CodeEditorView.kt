@@ -76,6 +76,16 @@ fun CodeEditorView(
     backspaceSignal: Long = 0,
     /** 查找跳转请求：pos 为全局字符偏移，requestId 变化即执行 */
     findRequest: FindRequest? = null,
+    /**
+     * 跳转到指定行（0 基）。
+     *
+     * 为什么需要它：输出面板里的报错行原本只是一段只读文本，
+     * 用户看到 `main.py line 12` 只能自己数行号滚过去——这是整个
+     * 「写码 → 运行 → 看报错 → 改代码」闭环里最硌手的一环。
+     * 跳转能力（setSelection + ensureSelectionVisible）编辑器本来就有，
+     * 只是没有对外暴露，这里把它接出来。
+     */
+    scrollToLine: ScrollToLineRequest? = null,
     /** 双指缩放调整字号（zoom 增量，累积到阈值回调一次） */
     onPinchZoom: ((Int) -> Unit)? = null
 ) {
@@ -155,6 +165,17 @@ fun CodeEditorView(
             val col = if (line == 0) pos
             else pos - (content.lastIndexOf('\n', pos - 1) + 1)
             runCatching { editor.setSelection(line, col) }
+            runCatching { editor.ensureSelectionVisible() }
+        }
+    }
+
+    // 跳转到报错所在行：光标落到该行行首并滚动到可见
+    LaunchedEffect(scrollToLine?.seq) {
+        val req = scrollToLine ?: return@LaunchedEffect
+        runCatching {
+            val lineCount = editor.text.lineCount
+            val line = req.line.coerceIn(0, (lineCount - 1).coerceAtLeast(0))
+            runCatching { editor.setSelection(line, 0) }
             runCatching { editor.ensureSelectionVisible() }
         }
     }

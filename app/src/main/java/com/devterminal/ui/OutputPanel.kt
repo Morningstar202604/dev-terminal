@@ -1,6 +1,7 @@
 package com.devterminal.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
@@ -20,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
@@ -31,6 +34,36 @@ import com.devterminal.ui.components.QuietTextField
 import com.devterminal.ui.components.StatusDot
 import com.devterminal.ui.theme.Dimens
 import com.devterminal.ui.theme.muted
+
+/**
+ * 从一行输出里解析出「文件:行号」中的行号，解析不到返回 null。
+ *
+ * 覆盖的格式（前两种是本 App 内置的编译器/解释器实际输出）：
+ *  - Python：`  File "main.py", line 12, in <module>`
+ *  - Java  ：`Main.java:12: error: ';' expected`
+ *  - 通用  ：`main.py:12:5` / `./src/main.py:12`（多数 linter 与编译器风格）
+ *
+ * 只认行号，不校验文件是否等于当前文件——输出里的路径可能带 `./` 前缀
+ * 或完整绝对路径，严格比对反而会漏掉大量真实命中。跳转目标是「当前打开的文件」，
+ * 若报错来自其他文件，用户切过去后行号依然有意义。
+ */
+private val PY_TRACE = Regex("""line\s+(\d+)""")
+private val PATH_LINE = Regex("""[\w./\\-]+\.\w{1,6}:(\d+)""")
+
+internal fun parseErrorLine(line: String): Int? {
+    // 已是友好提示或纯说明行，不参与跳转
+    if (line.startsWith("💡") || line.startsWith("——")) return null
+
+    // Python 的 `line 12` 最不容易与其他内容冲突，优先匹配
+    PY_TRACE.find(line)?.let { m ->
+        m.groupValues.getOrNull(1)?.toIntOrNull()?.let { return (it - 1).coerceAtLeast(0) }
+    }
+    // 其次匹配 `file.ext:12`；要求扩展名在前，避免误吞版本号（如 1.2.3）
+    PATH_LINE.find(line)?.let { m ->
+        m.groupValues.getOrNull(1)?.toIntOrNull()?.let { return (it - 1).coerceAtLeast(0) }
+    }
+    return null
+}
 
 /**
  * 底部输出面板。
@@ -53,6 +86,13 @@ fun OutputPanel(
     onClear: () -> Unit,
     onRerun: () -> Unit,
     onShare: (() -> Unit)? = null,
+    /**
+     * 点击带行号的报错行时回调行号（0 基）。
+     *
+     * 这是「运行 → 看报错 → 改代码」闭环里最关键的一跳：
+     * 原先报错行只是只读文本，用户得自己数行号再滚过去。
+     */
+    onJumpToLine: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val cs = MaterialTheme.colorScheme
@@ -120,7 +160,22 @@ fun OutputPanel(
                             line.startsWith("💡") -> cs.secondary
                             else -> cs.onSurface.copy(alpha = 0.88f)
                         }
-                        MonoText(line, color = color, fontSize = 11)
+                        // 能解析出行号的报错行才可点，避免所有行都变成点击目标
+                        val jumpLine = remember(line) { parseErrorLine(line) }
+                        if (jumpLine != null && onJumpToLine != null) {
+                            MonoText(
+                                line,
+                                color = color,
+                                fontSize = 11,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .clickable { onJumpToLine(jumpLine) }
+                                    .padding(vertical = 1.dp)
+                            )
+                        } else {
+                            MonoText(line, color = color, fontSize = 11)
+                        }
                     }
                 }
             }

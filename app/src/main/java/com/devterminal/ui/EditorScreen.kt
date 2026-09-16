@@ -7,6 +7,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +51,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
@@ -106,17 +108,14 @@ fun EditorScreen(vm: EditorViewModel) {
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
 
-    var showNewProject by remember { mutableStateOf(false) }
-    var showDiagnostics by remember { mutableStateOf(false) }
-    var showRunConfig by remember { mutableStateOf(false) }
-    var showSettings by remember { mutableStateOf(false) }
-    var showAbout by remember { mutableStateOf(false) }
-    var showPalette by remember { mutableStateOf(false) }
-    var showGit by remember { mutableStateOf(false) }
-    var showAi by remember { mutableStateOf(false) }
-    var showGlobalSearch by remember { mutableStateOf(false) }
-    /** 长按文件树后的操作目标 */
-    var actionTarget by remember { mutableStateOf<File?>(null) }
+    // 同一时刻至多一个面板。原先这里是 9 个独立布尔值，
+    // 既可以同时为 true（弹窗叠弹窗），也容易漏掉打开时的副作用。
+    var overlay by remember { mutableStateOf<Overlay>(Overlay.None) }
+    fun closeOverlay() { overlay = Overlay.None }
+
+    /** 跳转到报错行的请求（seq 自增保证连续点同一行也能响应） */
+    var scrollToLine by remember { mutableStateOf<ScrollToLineRequest?>(null) }
+
     /** 全局搜索关键词 */
     var gsearchQuery by remember { mutableStateOf("") }
 
@@ -159,11 +158,13 @@ fun EditorScreen(vm: EditorViewModel) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // 返回键：先关查找条/抽屉，而不是直接退出 App
-    BackHandler(enabled = ui.findVisible || drawerState.isOpen) {
+    // 返回键：按「由内到外」的顺序逐层关闭——
+    // 先收查找条，再收抽屉，最后才是退出 App。原先只处理了前两者。
+    BackHandler(enabled = ui.findVisible || drawerState.isOpen || overlay != Overlay.None) {
         when {
             ui.findVisible -> vm.showFind(false)
             drawerState.isOpen -> scope.launch { drawerState.close() }
+            overlay != Overlay.None -> closeOverlay()
         }
     }
 
@@ -224,7 +225,7 @@ fun EditorScreen(vm: EditorViewModel) {
                         root = ui.tree,
                         selectedPath = ui.currentFile?.absolutePath,
                         onFileClick = { vm.openFile(File(it.path)) },
-                        onFileLongPress = { node -> actionTarget = File(node.path) },
+                        onFileLongPress = { node -> overlay = Overlay.FileAction(node.path) },
                         modifier = Modifier.weight(1f)
                     )
 
@@ -239,7 +240,7 @@ fun EditorScreen(vm: EditorViewModel) {
                         Spacer(Modifier.height(Dimens.sm))
                         Row(horizontalArrangement = Arrangement.spacedBy(Dimens.sm)) {
                             ActionTile(Icons.Filled.Add, "新项目",
-                                onClick = { showNewProject = true },
+                                onClick = { overlay = Overlay.NewProject },
                                 modifier = Modifier.weight(1f))
                             ActionTile(Icons.Filled.FileDownload, "导入",
                                 onClick = { importLauncher.launch(arrayOf("*/*")) },
@@ -252,26 +253,26 @@ fun EditorScreen(vm: EditorViewModel) {
                         Spacer(Modifier.height(Dimens.sm))
                         Row(horizontalArrangement = Arrangement.spacedBy(Dimens.sm)) {
                             ActionTile(Icons.Filled.AccountTree, "Git",
-                                onClick = { showGit = true; vm.refreshGitStatus() },
+                                onClick = { overlay = Overlay.Git; vm.refreshGitStatus() },
                                 modifier = Modifier.weight(1f))
                             ActionTile(Icons.Filled.AutoAwesome, "AI",
-                                onClick = { showAi = true },
+                                onClick = { overlay = Overlay.Ai },
                                 accent = cs.secondary,
                                 modifier = Modifier.weight(1f))
                             ActionTile(Icons.Filled.Search, "搜索",
-                                onClick = { showGlobalSearch = true },
+                                onClick = { overlay = Overlay.GlobalSearch },
                                 modifier = Modifier.weight(1f))
                         }
                         Spacer(Modifier.height(Dimens.sm))
                         Row(horizontalArrangement = Arrangement.spacedBy(Dimens.sm)) {
                             ActionTile(Icons.Outlined.HealthAndSafety, "自检",
-                                onClick = { showDiagnostics = true },
+                                onClick = { overlay = Overlay.Diagnostics },
                                 modifier = Modifier.weight(1f))
                             ActionTile(Icons.Filled.Settings, "设置",
-                                onClick = { showSettings = true },
+                                onClick = { overlay = Overlay.Settings },
                                 modifier = Modifier.weight(1f))
                             ActionTile(Icons.Outlined.Info, "关于",
-                                onClick = { showAbout = true },
+                                onClick = { overlay = Overlay.About },
                                 modifier = Modifier.weight(1f))
                         }
                     }
@@ -308,7 +309,7 @@ fun EditorScreen(vm: EditorViewModel) {
                         // 命令面板：其余动作的归处，保持顶栏清爽
                         QuietIconButton(
                             Icons.Outlined.Terminal, "命令面板",
-                            onClick = { showPalette = true }
+                            onClick = { overlay = Overlay.Palette }
                         )
                         if (ui.dirty) {
                             QuietIconButton(
@@ -377,6 +378,15 @@ fun EditorScreen(vm: EditorViewModel) {
                         onDismiss = { vm.showFind(false) }
                     )
                 }
+                if (ui.currentFile == null && !ui.findVisible) {
+                    // 空态引导：告诉第一次打开的人「这是什么、现在该点哪」
+                    EditorEmptyState(
+                        hasProject = ui.tree != null,
+                        onOpenDrawer = { scope.launch { drawerState.open() } },
+                        onNewProject = { overlay = Overlay.NewProject },
+                        onImport = { importLauncher.launch(arrayOf("*/*")) }
+                    )
+                } else {
                 CodeEditorView(
                     file = ui.currentFile,
                     text = ui.editorText,
@@ -401,12 +411,14 @@ fun EditorScreen(vm: EditorViewModel) {
                             vm.updateSettings(ui.settings.copy(editorFontSize = next))
                         }
                     },
+                    scrollToLine = scrollToLine,
                     modifier = Modifier.fillMaxWidth().weight(1f)
                 )
                 SymbolBar(
                     onInsert = { vm.insertSymbol(it) },
                     onBackspace = { vm.backspaceSymbol() }
                 )
+                }
                 // 拖拽把手：一条细横线，暗示「这里可以拖动」，不加背景色
                 Box(
                     Modifier
@@ -450,6 +462,10 @@ fun EditorScreen(vm: EditorViewModel) {
                             context.startActivity(Intent.createChooser(intent, "分享运行结果"))
                         }
                     },
+                    onJumpToLine = { line ->
+                        // 报错行 → 编辑器光标。seq 自增保证连点同一行也会重新执行。
+                        scrollToLine = ScrollToLineRequest(line, (scrollToLine?.seq ?: 0L) + 1L)
+                    },
                     modifier = Modifier.fillMaxWidth().height(outputHeight.dp)
                 )
                 Hairline()
@@ -464,34 +480,35 @@ fun EditorScreen(vm: EditorViewModel) {
         }
     }
 
-    if (showNewProject) {
+    // 所有面板由单一 overlay 状态驱动：同一时刻至多一个，返回键也只需处理这一处
+    if (overlay == Overlay.NewProject) {
         NewProjectDialog(
-            onDismiss = { showNewProject = false },
-            onCreate = { id -> vm.newProject(id); showNewProject = false }
+            onDismiss = ::closeOverlay,
+            onCreate = { id -> vm.newProject(id); closeOverlay() }
         )
     }
 
     // ---------- 命令面板：所有动作的搜索入口 ----------
-    if (showPalette) {
+    if (overlay == Overlay.Palette) {
         CommandPalette(
             commands = buildCommands(vm, ui,
                 onCommand = { cmd -> when (cmd) {
-                    "diag" -> showDiagnostics = true
-                    "settings" -> showSettings = true
-                    "about" -> showAbout = true
-                    "newproj" -> showNewProject = true
-                    "git" -> { showGit = true; vm.refreshGitStatus() }
-                    "ai" -> showAi = true
-                    "gsearch" -> showGlobalSearch = true
-                    "runconfig" -> showRunConfig = true
+                    "diag" -> overlay = Overlay.Diagnostics
+                    "settings" -> overlay = Overlay.Settings
+                    "about" -> overlay = Overlay.About
+                    "newproj" -> overlay = Overlay.NewProject
+                    "git" -> { overlay = Overlay.Git; vm.refreshGitStatus() }
+                    "ai" -> overlay = Overlay.Ai
+                    "gsearch" -> overlay = Overlay.GlobalSearch
+                    "runconfig" -> overlay = Overlay.RunConfig
                     "export" -> exportLauncher.launch(vm.suggestedExportName())
                 } }
             ),
-            onDismiss = { showPalette = false }
+            onDismiss = ::closeOverlay
         )
     }
 
-    if (showGit) {
+    if (overlay == Overlay.Git) {
         GitPanelDialog(
             status = ui.gitStatus,
             busy = ui.gitBusy,
@@ -506,11 +523,11 @@ fun EditorScreen(vm: EditorViewModel) {
             onCommit = vm::gitCommit,
             onPush = vm::gitPush,
             onPull = vm::gitPull,
-            onDismiss = { showGit = false }
+            onDismiss = ::closeOverlay
         )
     }
 
-    if (showAi) {
+    if (overlay == Overlay.Ai) {
         AiPanelDialog(
             messages = ui.aiMessages,
             busy = ui.aiBusy,
@@ -519,50 +536,51 @@ fun EditorScreen(vm: EditorViewModel) {
             onInputChange = vm::onAiInputChanged,
             onSend = vm::sendAiInput,
             onQuick = vm::aiQuick,
-            onDismiss = { showAi = false }
+            onDismiss = ::closeOverlay
         )
     }
 
-    if (showGlobalSearch) {
+    if (overlay == Overlay.GlobalSearch) {
         GlobalSearchDialog(
             query = gsearchQuery,
             results = ui.globalResults,
             searching = ui.globalSearching,
             onQueryChange = { gsearchQuery = it },
             onSearch = vm::searchAll,
-            onOpen = { hit -> vm.openSearchHit(hit); showGlobalSearch = false },
-            onDismiss = { showGlobalSearch = false }
+            onOpen = { hit -> vm.openSearchHit(hit); closeOverlay() },
+            onDismiss = ::closeOverlay
         )
     }
 
-    if (showDiagnostics) {
+    if (overlay == Overlay.Diagnostics) {
         DiagnosticsDialog(
             diagnostics = ui.diagnostics,
             onRefresh = { vm.runDiagnostics() },
-            onDismiss = { showDiagnostics = false }
+            onDismiss = ::closeOverlay
         )
     }
 
-    if (showRunConfig) {
+    if (overlay == Overlay.RunConfig) {
         RunConfigDialog(
             args = ui.runArgs,
             mainClass = ui.mainClass,
             onArgsChange = vm::onRunArgsChanged,
             onMainClassChange = vm::onMainClassChanged,
-            onDismiss = { showRunConfig = false }
+            onDismiss = ::closeOverlay
         )
     }
 
-    actionTarget?.let { target ->
+    (overlay as? Overlay.FileAction)?.let { fa ->
+        val target = File(fa.path)
         FileActionDialog(
             target = target,
-            onRename = { newName -> vm.renameFile(target, newName); actionTarget = null },
-            onDelete = { vm.deleteFile(target); actionTarget = null },
-            onDismiss = { actionTarget = null }
+            onRename = { newName -> vm.renameFile(target, newName); closeOverlay() },
+            onDelete = { vm.deleteFile(target); closeOverlay() },
+            onDismiss = ::closeOverlay
         )
     }
 
-    if (showSettings) {
+    if (overlay == Overlay.Settings) {
         SettingsDialog(
             settings = ui.settings,
             onToggleDark = { vm.updateSettings(ui.settings.copy(darkTheme = it)) },
@@ -572,12 +590,102 @@ fun EditorScreen(vm: EditorViewModel) {
             onAiConfigChange = { url, key, model ->
                 vm.updateSettings(ui.settings.copy(aiBaseUrl = url, aiApiKey = key, aiModel = model))
             },
-            onDismiss = { showSettings = false }
+            onDismiss = ::closeOverlay
         )
     }
 
-    if (showAbout) {
-        AboutDialog(onDismiss = { showAbout = false })
+    if (overlay == Overlay.About) {
+        AboutDialog(onDismiss = ::closeOverlay)
+    }
+}
+
+/**
+ * 编辑器空态：工具链已就绪、但还没打开任何文件时展示。
+ *
+ * 原先这里只有一句「从左侧选择一个文件开始编辑」——对第一次打开 App 的人
+ * 等于什么都没说：他不知道左侧是什么、项目在哪、该点哪个。这是整个产品
+ * 使用逻辑上最大的一个断点，所以直接改成三段式引导：
+ *   ① 一句话说清这是什么、能干什么；
+ *   ② 两个「立刻能用」的动作（新建项目 / 导入现有文件）；
+ *   ③ 另外给一条「已经会用了」的快捷路径——直接打开文件树。
+ */
+@Composable
+private fun EditorEmptyState(
+    hasProject: Boolean,
+    onOpenDrawer: () -> Unit,
+    onNewProject: () -> Unit,
+    onImport: () -> Unit
+) {
+    val cs = MaterialTheme.colorScheme
+    Box(
+        Modifier.fillMaxSize().background(cs.background),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            Modifier.padding(horizontal = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                Icons.Outlined.Terminal, null,
+                tint = cs.primary.copy(alpha = 0.75f),
+                modifier = Modifier.size(30.dp)
+            )
+            Spacer(Modifier.height(Dimens.lg))
+            Text(
+                if (hasProject) "选一个文件开始" else "写代码，不用联网",
+                style = MaterialTheme.typography.titleMedium,
+                color = cs.onSurface
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                if (hasProject) {
+                    "从左侧文件树点开任意文件即可编辑，底部面板会显示运行结果"
+                } else {
+                    "Python 与 Java 的解释器、编译器和 Git 都已内置，离线随时随地跑代码"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = cs.muted,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(Dimens.xl))
+            if (hasProject) {
+                // 已有项目：唯一该做的事就是去打开文件
+                PrimaryQuietButton("打开文件树", Icons.Outlined.Menu, onOpenDrawer)
+            } else {
+                // 空项目：给出两条真正能往下走的路径，而不是一句提示
+                PrimaryQuietButton("新建项目", Icons.Filled.Add, onNewProject)
+                Spacer(Modifier.height(Dimens.sm))
+                TextButton(onClick = onImport) {
+                    Text(
+                        "或导入手机里的现有代码",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = cs.muted
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 空态里的主行动按钮：描边而非实心，与整体克制风格一致 */
+@Composable
+private fun PrimaryQuietButton(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit
+) {
+    val cs = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(cs.primary.copy(alpha = 0.10f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = cs.primary, modifier = Modifier.size(17.dp))
+        Spacer(Modifier.width(Dimens.sm))
+        Text(label, style = MaterialTheme.typography.labelLarge, color = cs.primary)
     }
 }
 
