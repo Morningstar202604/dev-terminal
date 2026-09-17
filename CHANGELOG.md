@@ -2,6 +2,39 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.5.0] — 2026-09-17
+
+### 新增
+- **离线真实 Python 运行引擎（设计稿验证版）**：`design/mockup.html` 接入 Pyodide 0.26.4
+  （本地 vendor 到 `design/pyodide/full/`，Web Worker 架构），实现真实 stdout/stderr 捕获、
+  完整 traceback、`input()` 预喂、多文件 `import`、超时中断。
+- **内置题库（11 道真实可运行题目）**：素数筛 / 递归栈溢出 / 语法错误 / 除零 / KeyError /
+  多文件模块导入 / 5000 行长输出 / 死循环超时 / 文件读写 / 中文 Emoji / 交互式问答。
+- **报错行点击跳转**：真实 traceback 进入输出面板即自动变为可点击行，点击后编辑器滚动并高亮
+  对应源码行；与 Kotlin 端 `parseErrorLine`（`app/.../OutputPanel.kt`）正则逐字符一致。
+- **端到端测试脚手架**：`tools/serve_design.py`（多线程静态服务）、`tools/test_suite.py`
+  （Playwright 驱动逐题真实运行 + 断言 + 截图 + 录屏）、`tools/test_ui.py`（UI 交互覆盖）、
+  `tools/build_promo.py`（宣传片生成）。
+
+### 修复
+- **Pyodide worker 超时提示字符串拼接错误**：原 `'⏱ 已超时取消（" + sec + 's）…'` 拼接语法错误，
+  `sec` 不被插值；改为正确拼接。
+- **traceback 内部帧清洗**：过滤 Pyodide 注入的 `_pyodide/_base.py`、`CodeRunner` 等栈帧，
+  避免被 `parseErrorLine` 误判为可跳转行。
+- **中文/Emoji 乱码**：`raw` 回调返回 UTF-8 字节流，改用 `TextDecoder('utf-8')` 流式解码。
+- **多文件 import 失败**：`runPythonAsync` 不自动把 cwd 加入 `sys.path`，setup 阶段补 `sys.path.insert`。
+- **报错行号偏移**：setup 与用户代码分离为两次 `runPythonAsync`，避免 setup 撑偏行号。
+
+### 测试
+- 端到端全量测试 **11/11 通过**（约 44s，含首次解释器预热）；
+  逐题验证真实输出、报错行可跳转、中文无乱码、死循环 3s 安全终止。
+- 交付：宣传片 + 题库遍历录屏 + UI 交互录屏 + 27 张截图 + 结构化测试报告（见 `test_results/`）。
+
+### 构建
+- versionCode 5 → 6，versionName 0.4.1 → 0.5.0。
+- 说明：本轮核心改动落在 `design/` 设计稿与测试工具链，**原生 APK 未集成 Pyodide**
+  （APK 仍走 `usrtar.zip` + `TermuxEngine` 的本地 Linux 用户空间方案）。
+
 ## [0.4.1] — 2026-09-16
 
 ### 新增

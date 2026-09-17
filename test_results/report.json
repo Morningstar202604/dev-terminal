@@ -1,0 +1,129 @@
+{
+  "url": "http://127.0.0.1:8190/mockup.html",
+  "total_seconds": 43.9,
+  "passed": 11,
+  "total": 11,
+  "results": [
+    {
+      "key": "lab_sieve",
+      "expected_badge": "成功",
+      "ok": true,
+      "notes": [],
+      "run_seconds": 0.0,
+      "badge": "成功",
+      "output_len": 166,
+      "jump_lines": 0,
+      "output_excerpt": "$ devterminal run sieve.py\n正在启动离线解释器…（首次约需十几秒加载）\n1..1000 内的素数共 168 个\n前 20 个: [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71]\n进程已退出（退出码 0）"
+    },
+    {
+      "key": "lab_fib",
+      "expected_badge": "失败",
+      "ok": true,
+      "notes": [],
+      "run_seconds": 0.0,
+      "badge": "失败",
+      "output_len": 510,
+      "jump_lines": 4,
+      "output_excerpt": "$ devterminal run fib_rec.py\n正在启动离线解释器…（首次约需十几秒加载）\nTraceback (most recent call last):\n  File \"fib_rec.py\", line 6, in <module>\n    print(fib(3000))\n  File \"fib_rec.py\", line 4, in fib\n    return fib(n - 1) + fib(n - 2)   # 没有递归边界，必爆栈\n  File \"fib_rec.py\", line 4, in fib\n    return fib(n - 1) + fib(n - 2)   # 没有递归边界，必爆栈\n  File \"fib_rec.py\", line 4, in fib\n    return fib(n - 1) + fib(n - 2)   # 没有递归边"
+    },
+    {
+      "key": "lab_syntax",
+      "expected_badge": "失败",
+      "ok": true,
+      "notes": [],
+      "run_seconds": 0.0,
+      "badge": "失败",
+      "output_len": 284,
+      "jump_lines": 1,
+      "output_excerpt": "$ devterminal run syntax_err.py\n正在启动离线解释器…（首次约需十几秒加载）\nTraceback (most recent call last):\n    self.ast = next(self._gen)\n    mod = compile(source, filename, mode, flags | ast.PyCF_ONLY_AST)\n  File \"syntax_err.py\", line 1\n    def add(a, b\nSyntaxError: '(' was never closed\n—— 运行结束，退出码 1"
+    },
+    {
+      "key": "lab_zerodiv",
+      "expected_badge": "失败",
+      "ok": true,
+      "notes": [],
+      "run_seconds": 0.0,
+      "badge": "失败",
+      "output_len": 286,
+      "jump_lines": 1,
+      "output_excerpt": "$ devterminal run zerodiv.py\n正在启动离线解释器…（首次约需十几秒加载）\n10 / 10 = 1\n10 / 4 = 2\nTraceback (most recent call last):\n  File \"zerodiv.py\", line 3, in <module>\n    print(\"10 /\", x, \"=\", 10 // x)\n                          ~~~^^~~\nZeroDivisionError: integer division or modulo by zero\n—— 运行结束，退出码 1"
+    },
+    {
+      "key": "lab_key",
+      "expected_badge": "失败",
+      "ok": true,
+      "notes": [],
+      "run_seconds": 0.0,
+      "badge": "失败",
+      "output_len": 236,
+      "jump_lines": 1,
+      "output_excerpt": "$ devterminal run keyerr.py\n正在启动离线解释器…（首次约需十几秒加载）\nTraceback (most recent call last):\n  File \"keyerr.py\", line 2, in <module>\n    print(\"年龄:\", user[\"age\"])   # 键不存在 -> KeyError\n                   ~~~~^^^^^^^\nKeyError: 'age'\n—— 运行结束，退出码 1"
+    },
+    {
+      "key": "lab_multi",
+      "expected_badge": "失败",
+      "ok": true,
+      "notes": [],
+      "run_seconds": 0.0,
+      "badge": "失败",
+      "output_len": 337,
+      "jump_lines": 2,
+      "output_excerpt": "$ devterminal run app.py\n正在启动离线解释器…（首次约需十几秒加载）\nhello, DevTerminal\nTraceback (most recent call last):\n  File \"app.py\", line 4, in <module>\n    print(\"10 / 0 =\", divide(10, 0))\n  File \"/workspace/mymath.py\", line 2, in divide\n    return a / b   # b=0 时会抛 ZeroDivisionError\n           ~~^~~\nZeroDivisionError: division by zero\n—— 运行结束，退出码 1"
+    },
+    {
+      "key": "lab_long",
+      "expected_badge": "成功",
+      "ok": true,
+      "notes": [],
+      "run_seconds": 10.3,
+      "badge": "成功",
+      "output_len": 155455,
+      "jump_lines": 0,
+      "output_excerpt": "$ devterminal run long_out.py\n正在启动离线解释器…（首次约需十几秒加载）\n0000: DevTerminal 离线运行 0\n0001: DevTerminal 离线运行 1\n0002: DevTerminal 离线运行 4\n0003: DevTerminal 离线运行 9\n0004: DevTerminal 离线运行 16\n0005: DevTerminal 离线运行 25\n0006: DevTerminal 离线运行 36\n0007: DevTerminal 离线运行 49\n0008: DevTerminal 离线运行 64\n0009: DevTerminal 离线运行 81\n0010: DevTerminal 离线运行 100\n0011: DevTerminal 离线运行 121\n0012: DevTerminal 离线运行 144\n0013: DevTe"
+    },
+    {
+      "key": "lab_fileio",
+      "expected_badge": "成功",
+      "ok": true,
+      "notes": [],
+      "run_seconds": 0.0,
+      "badge": "成功",
+      "output_len": 89,
+      "jump_lines": 0,
+      "output_excerpt": "$ devterminal run fileio.py\n正在启动离线解释器…（首次约需十几秒加载）\n读到: DevTerminal 离线文件 IO 测试\n进程已退出（退出码 0）"
+    },
+    {
+      "key": "lab_unicode",
+      "expected_badge": "成功",
+      "ok": true,
+      "notes": [],
+      "run_seconds": 0.0,
+      "badge": "成功",
+      "output_len": 109,
+      "jump_lines": 0,
+      "output_excerpt": "$ devterminal run unicode.py\n正在启动离线解释器…（首次约需十几秒加载）\n你好，世界 🌍\n离线编程 · 中文注释与符号: ∑ ∫ √ π\nemoji 测试: 🚀🔥✅\n进程已退出（退出码 0）"
+    },
+    {
+      "key": "lab_quiz",
+      "expected_badge": "成功",
+      "ok": true,
+      "notes": [],
+      "run_seconds": 0.0,
+      "badge": "成功",
+      "output_len": 108,
+      "jump_lines": 0,
+      "output_excerpt": "$ devterminal run quiz.py\n正在启动离线解释器…（首次约需十几秒加载）\n你叫什么名字？ 你好，小明！代码已在离线环境运行。\n你几岁了？ 再过 10 年你就 28 岁了\n进程已退出（退出码 0）"
+    },
+    {
+      "key": "lab_loop",
+      "expected_badge": "失败",
+      "ok": true,
+      "notes": [],
+      "run_seconds": 15.0,
+      "badge": "失败",
+      "output_len": 92,
+      "jump_lines": 0,
+      "output_excerpt": "$ devterminal run infinite.py\n正在启动离线解释器…（首次约需十几秒加载）\n⏱ 运行超时（3s），已强制终止\n💡 死循环或耗时过长会被安全终止，不会卡死应用"
+    }
+  ]
+}

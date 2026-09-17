@@ -9,5 +9,13 @@ captures/
 .cxx/
 *.apk
 *.aab
+
+# 测试产物：保留报告与截图，忽略可再生的视频片段/录屏大文件
+test_results/promo_clips/
+test_results/promo_cards/
+test_results/**/recording/
+test_results/**/ui_recording/
+test_results/**/*.webm
+
 # 说明：usrtar.zip（28MB 离线工具链）与 textmate/（语法资源）已随仓库提供，
 # clone 后即可离线构建 APK；如需重新生成见 tools/ 脚本。

@@ -1,0 +1,19 @@
+{
+  "seconds": 17.9,
+  "steps": [
+    "/workspace/dev-terminal/test_results/ui_shots/ui_00_home.png",
+    "/workspace/dev-terminal/test_results/ui_shots/ui_01_drawer.png",
+    "/workspace/dev-terminal/test_results/ui_shots/ui_02_mainpy.png",
+    "/workspace/dev-terminal/test_results/ui_shots/ui_03_guess_running.png",
+    "/workspace/dev-terminal/test_results/ui_shots/ui_04_guess_done.png",
+    "/workspace/dev-terminal/test_results/ui_shots/ui_05_utilspy.png",
+    "/workspace/dev-terminal/test_results/ui_shots/ui_06_fib_error.png",
+    "/workspace/dev-terminal/test_results/ui_shots/ui_07_error_jump.png",
+    "error_jump_clicked=True",
+    "/workspace/dev-terminal/test_results/ui_shots/ui_08_git.png",
+    "/workspace/dev-terminal/test_results/ui_shots/ui_09_ai.png",
+    "/workspace/dev-terminal/test_results/ui_shots/ui_10_cmdk.png",
+    "/workspace/dev-terminal/test_results/ui_shots/ui_11_search.png",
+    "/workspace/dev-terminal/test_results/ui_shots/ui_12_sieve_ok.png"
+  ]
+}

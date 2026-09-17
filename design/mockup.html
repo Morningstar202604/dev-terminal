@@ -758,6 +758,32 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
               border-left: 1px solid var(--outline-soft); }
   .ide-status{ grid-area: status; }
 }
+
+/* ============ 题库按钮 / 测试题库面板 ============ */
+.lab-btn{
+  flex:0 0 auto; height:30px; padding:0 12px; margin-right:8px; border:none; border-radius:8px;
+  background: var(--primary-soft); color: var(--primary);
+  font-family: var(--ui); font-size:12px; font-weight:600; cursor:pointer;
+  transition: background .14s ease;
+}
+.lab-btn:hover{ background: var(--primary-hover); }
+.sheet-sub{ padding:8px 14px 4px; font-size:11px; color:var(--text-faint); }
+.lab-item{
+  display:flex; align-items:center; gap:12px; padding:11px 12px; border-radius:10px;
+  cursor:pointer; transition: background .14s ease;
+}
+.lab-item:hover{ background: var(--surface-2); }
+.lab-item .lico{
+  flex:0 0 auto; width:30px; height:30px; display:flex; align-items:center; justify-content:center;
+  border-radius:8px; background: var(--surface-3); color: var(--primary); font-size:14px;
+}
+.lab-item .lcol{ min-width:0; }
+.lab-item .lt{ font-size:13px; font-weight:600; color:var(--text); }
+.lab-item .ld{ font-size:11px; color:var(--text-faint); margin-top:2px; }
+.lab-item .ltag{
+  margin-left:auto; flex:0 0 auto; font-size:10.5px; font-weight:600; padding:3px 9px; border-radius:999px;
+  background: var(--primary-soft); color: var(--primary);
+}
 </style>
 </head>
 <body>
@@ -804,6 +830,7 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
       </svg>
     </button>
 
+    <button class="lab-btn" id="btnLab">题库</button>
     <button class="run-btn" id="btnRun" data-running="false">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>
       <span id="runLabel">运行</span>
@@ -1079,6 +1106,19 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
     </div>
   </div>
 
+  <!-- ============ 测试题库面板 ============ -->
+  <div class="sheet" id="labSheet">
+    <div class="sheet-box" style="height:80%">
+      <div class="sheet-head">
+        <span class="sh-t">🧪 测试题库</span>
+        <span class="git-branch" style="color:#22d3ee; background:rgba(34,211,238,.12)">真实离线运行</span>
+        <button class="sheet-close" data-close="labSheet">✕</button>
+      </div>
+      <div class="sheet-sub">点任意题目：自动载入编辑器并真实运行（Pyodide 离线 Python 解释器）</div>
+      <div class="sheet-body" id="labList"></div>
+    </div>
+  </div>
+
   <!-- ============ 首启引导（对应 EditorEmptyState） ============ -->
   <div class="onboard" id="onboard">
     <div class="ob-box">
@@ -1195,6 +1235,123 @@ const FILES = {
       "        sc.close();",
       "    }",
       "}"
+    ].join("\n")
+  },
+
+  /* ===================== 测试题库（真实可运行） ===================== */
+  "lab_sieve": {
+    name: "sieve.py", lang: "python", real: true,
+    code: [
+      "def sieve(n):",
+      '    """埃拉托色尼筛法：返回 1..n 内的全部素数"""',
+      "    s = [True] * (n + 1)",
+      "    for i in range(2, int(n ** 0.5) + 1):",
+      "        if s[i]:",
+      "            for j in range(i * i, n + 1, i):",
+      "                s[j] = False",
+      "    return [i for i in range(2, n + 1) if s[i]]",
+      "",
+      "primes = sieve(1000)",
+      'print("1..1000 内的素数共", len(primes), "个")',
+      'print("前 20 个:", primes[:20])'
+    ].join("\n")
+  },
+  "lab_fib": {
+    name: "fib_rec.py", lang: "python", real: true,
+    code: [
+      "def fib(n):",
+      "    if n <= 1:",
+      "        return n",
+      "    return fib(n - 1) + fib(n - 2)   # 没有递归边界，必爆栈",
+      "",
+      "print(fib(3000))"
+    ].join("\n")
+  },
+  "lab_syntax": {
+    name: "syntax_err.py", lang: "python", real: true,
+    code: [
+      "def add(a, b",
+      "    return a + b",
+      "",
+      "print(add(1, 2))"
+    ].join("\n")
+  },
+  "lab_zerodiv": {
+    name: "zerodiv.py", lang: "python", real: true,
+    code: [
+      "nums = [10, 4, 0, 7]",
+      "for x in nums:",
+      '    print("10 /", x, "=", 10 // x)'
+    ].join("\n")
+  },
+  "lab_key": {
+    name: "keyerr.py", lang: "python", real: true,
+    code: [
+      'user = {"name": "DevTerminal", "lang": "Python"}',
+      'print("年龄:", user["age"])   # 键不存在 -> KeyError',
+      'print("OK")'
+    ].join("\n")
+  },
+  "lab_mymath": {
+    name: "mymath.py", lang: "python", real: true,
+    code: [
+      "def divide(a, b):",
+      "    return a / b   # b=0 时会抛 ZeroDivisionError",
+      "",
+      'def greet(name):',
+      '    return "hello, " + name'
+    ].join("\n")
+  },
+  "lab_multi": {
+    name: "app.py", lang: "python", real: true,
+    code: [
+      "from mymath import divide, greet",
+      "",
+      'print(greet("DevTerminal"))',
+      'print("10 / 0 =", divide(10, 0))'
+    ].join("\n")
+  },
+  "lab_long": {
+    name: "long_out.py", lang: "python", real: true,
+    code: [
+      "for i in range(5000):",
+      '    print(f"{i:04d}: DevTerminal 离线运行 {i * i}")',
+      'print("-- 共输出 5000 行 --")'
+    ].join("\n")
+  },
+  "lab_loop": {
+    name: "infinite.py", lang: "python", real: true, timeout: 3,
+    code: [
+      "import time",
+      "n = 0",
+      "while True:",
+      "    n += 1   # 死循环：3 秒后被运行器安全终止"
+    ].join("\n")
+  },
+  "lab_fileio": {
+    name: "fileio.py", lang: "python", real: true,
+    code: [
+      'with open("note.txt", "w", encoding="utf-8") as f:',
+      '    f.write("DevTerminal 离线文件 IO 测试\\n")',
+      'with open("note.txt", encoding="utf-8") as f:',
+      '    print("读到:", f.read().strip())'
+    ].join("\n")
+  },
+  "lab_unicode": {
+    name: "unicode.py", lang: "python", real: true,
+    code: [
+      'print("你好，世界 🌍")',
+      'print("离线编程 · 中文注释与符号: ∑ ∫ √ π")',
+      'print("emoji 测试: 🚀🔥✅")'
+    ].join("\n")
+  },
+  "lab_quiz": {
+    name: "quiz.py", lang: "python", real: true, inputs: ["小明", "18"],
+    code: [
+      'name = input("你叫什么名字？ ")',
+      'print("你好，" + name + "！代码已在离线环境运行。")',
+      'age = int(input("你几岁了？ "))',
+      'print("再过 10 年你就", age + 10, "岁了")'
     ].join("\n")
   }
 };
@@ -1713,6 +1870,45 @@ $("aiInput").addEventListener("keydown", function(e){
 });
 $("btnAi").addEventListener("click", function(){ openSheet("aiSheet"); });
 
+/* ---- 测试题库 ---- */
+const LAB = [
+  { key:"lab_sieve",   title:"埃拉托色尼素数筛", tag:"算法",     desc:"真实计算 1..1000 内素数" },
+  { key:"lab_fib",     title:"递归斐波那契（栈溢出）", tag:"报错跳转", desc:"RecursionError → 点报错行跳回源码" },
+  { key:"lab_syntax",  title:"语法错误", tag:"报错跳转", desc:"SyntaxError 行号定位" },
+  { key:"lab_zerodiv", title:"除零异常", tag:"报错",     desc:"ZeroDivisionError" },
+  { key:"lab_key",     title:"字典键缺失", tag:"报错",     desc:"KeyError" },
+  { key:"lab_multi",   title:"多文件模块导入", tag:"多文件",   desc:"import 另一文件并触发其报错" },
+  { key:"lab_long",    title:"大循环长输出", tag:"性能",     desc:"5000 行输出 + 自动滚动" },
+  { key:"lab_loop",    title:"死循环超时", tag:"超时",     desc:"3 秒后被安全终止" },
+  { key:"lab_fileio",  title:"文件读写", tag:"IO",       desc:"离线虚拟文件系统" },
+  { key:"lab_unicode", title:"中文与 Emoji", tag:"编码",     desc:"UTF-8 输出正确性" },
+  { key:"lab_quiz",    title:"交互式问答", tag:"交互",     desc:"真实 input() 预喂输入" }
+];
+function renderLab(){
+  $("labList").innerHTML = LAB.map(function(it){
+    return '<div class="lab-item" data-key="' + it.key + '">' +
+      '<div class="lico">🐍</div>' +
+      '<div class="lcol"><div class="lt">' + it.title + '</div><div class="ld">' + it.desc + '</div></div>' +
+      '<div class="ltag">' + it.tag + '</div></div>';
+  }).join("");
+  document.querySelectorAll("#labList .lab-item").forEach(function(row){
+    row.addEventListener("click", function(){ openProgram(row.dataset.key); });
+  });
+}
+function openProgram(key){
+  const f = FILES[key];
+  if (!f) return;
+  $("labSheet").classList.remove("open");
+  renderEditor(key);
+  clearOutput();
+  appendLine("sys", "已打开 " + f.name);
+  setBadge("idle", "空闲"); setRunning(false); killTimers(); lockInput();
+  const meta = LAB.find(function(x){ return x.key === key; });
+  toast("已载入：" + (meta ? meta.title : f.name));
+  setTimeout(function(){ run(); }, 550);
+}
+$("btnLab").addEventListener("click", function(){ openSheet("labSheet"); renderLab(); });
+
 /* ---- 全局搜索 ---- */
 const HITS = [
   { f:"main.py", l:10, t:'guess = int(input("请输入: "))' },
@@ -1815,9 +2011,95 @@ function lockInput(placeholder){
   btnSend.disabled = true;
 }
 
+/* ---------- 真实离线 Python 运行（Pyodide Web Worker） ---------- */
+let _pyWorker = null, _pyReady = false, _pyPending = null, _pyCurrent = null, _pyInitTo = null;
+function getPyWorker(){
+  if (_pyWorker) return _pyWorker;
+  const w = new Worker(new URL("pyworker.js", location.href), { type: "module" });
+  w.onmessage = onPyMessage;
+  w.onerror = function(ev){ appendLine("err", "⚠ 运行器错误：" + (ev.message || "worker 加载失败")); };
+  w.postMessage({ type: "init", indexURL: new URL("pyodide/full/", location.href).href });
+  _pyWorker = w;
+  return w;
+}
+function collectRealFiles(){
+  const out = {};
+  for (const k in FILES){ if (FILES[k] && FILES[k].real) out[FILES[k].name] = FILES[k].code; }
+  return out;
+}
+function onPyMessage(e){
+  const m = e.data;
+  if (m.type === "ready"){
+    _pyReady = true;
+    if (_pyInitTo){ clearTimeout(_pyInitTo); _pyInitTo = null; }
+    if (_pyPending){ const p = _pyPending; _pyPending = null; startPyRun(p); }
+    return;
+  }
+  if (m.type === "status"){ appendLine("hint", m.msg); return; }
+  if (m.type === "error"){ appendLine("err", m.text); return; }
+  if (m.type === "out"){ appendLine(m.stream === "stderr" ? "err" : "", m.text); return; }
+  if (m.type === "done"){
+    if (_pyCurrent && _pyCurrent.to) clearTimeout(_pyCurrent.to);
+    running = false; setRunning(false);
+    if (m.exitCode === 0){
+      setBadge("ok", "成功");
+      appendLine("hint", "进程已退出（退出码 0）");
+    } else {
+      setBadge("err", "失败");
+      appendLine("sys", "—— 运行结束，退出码 " + m.exitCode);
+    }
+    lockInput("程序已结束，再次运行试试…");
+    _pyCurrent = null;
+    return;
+  }
+}
+function startPyRun(p){
+  const w = getPyWorker();
+  if (_pyInitTo){ clearTimeout(_pyInitTo); _pyInitTo = null; }
+  const sec = p.timeout || 8;
+  // 安全看门狗：正常情况 worker 会在超时点用中断缓冲取消运行并回 'done'；
+  // 若中断机制失效（如环境不支持 SharedArrayBuffer），这里兜底终止，避免永久卡死。
+  _pyCurrent.to = setTimeout(function(){
+    appendLine("err", "⏱ 运行超时（" + sec + "s），已强制终止");
+    appendLine("hint", "💡 死循环或耗时过长会被安全终止，不会卡死应用");
+    setBadge("err", "失败"); lockInput("程序已结束");
+    running = false; setRunning(false);
+    try { w.terminate(); } catch (_) {}
+    _pyWorker = null; _pyReady = false; _pyCurrent = null;
+    toast("已超时终止");
+  }, (sec + 12) * 1000);
+  w.postMessage({ type: "run", code: p.code, files: collectRealFiles(), inputs: p.inputs || [], mainFile: p.mainFile, timeout: sec });
+}
+function realRun(p){
+  running = true; setRunning(true); setBadge("running", "运行中");
+  clearOutput(); killTimers();
+  appendLine("sys", "$ devterminal run " + p.mainFile);
+  appendLine("hint", "正在启动离线解释器…（首次约需十几秒加载）");
+  _pyCurrent = { to: null };
+  if (_pyReady){
+    startPyRun(p);
+  } else {
+    _pyPending = p;
+    // 仅对「解释器加载」设较长守卫；加载完成后的执行超时在 startPyRun 里单独设
+    _pyInitTo = setTimeout(function(){
+      appendLine("err", "⚠ 离线解释器加载失败或超时");
+      appendLine("hint", "💡 请检查 pyodide 资源是否完整");
+      setBadge("err", "失败"); lockInput("程序已结束");
+      running = false; setRunning(false);
+      try { _pyWorker.terminate(); } catch (_) {}
+      _pyWorker = null; _pyReady = false; _pyCurrent = null; _pyPending = null;
+    }, 90000);
+  }
+}
+
 function run(){
   if (running) return;
   const f = FILES[activeFile];
+  if (!f) return;
+  if (f.real){
+    realRun({ code: f.code, inputs: f.inputs || null, mainFile: f.name, timeout: f.timeout || 8 });
+    return;
+  }
   const prog = PROGRAMS[activeFile];
   if (!prog) return;
 
@@ -2007,6 +2289,9 @@ showOnboard(/[?&]onboard=1/.test(location.search));
 if (/[?&]theme=light/.test(location.search)){
   document.documentElement.setAttribute("data-theme", "light");
 }
+
+/* 预热：页面加载即开始加载离线解释器，用户点「运行」时早已就绪（避免首跑卡顿） */
+getPyWorker();
 
 })();
 </script>
