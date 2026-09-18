@@ -1,11 +1,25 @@
-# DevTerminal
+<h1 align="center">📱 DevTerminal</h1>
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-green.svg)](https://developer.android.com)
-[![Language](https://img.shields.io/badge/Kotlin%20%2B%20Compose-1.9.24-7F52FF.svg)](https://kotlinlang.org)
-[![FIRE](https://img.shields.io/badge/%E7%A6%BB%E7%BA%BF-100%25%20%E9%9B%B6%E7%BD%91%E7%BB%9C-orange)](#构建步骤)
+<p align="center">
+  <b>完全离线的安卓编程终端 — 手机上的现代 IDE。<br>写、跑、调试 Python 与 Java，全程零网络。</b>
+</p>
 
-> 开源仓库：https://gitcode.com/badhope/dev-terminal
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat-square" alt="License" /></a>
+  <a href="https://developer.android.com"><img src="https://img.shields.io/badge/platform-Android%208.0%2B-green?style=flat-square" alt="Platform" /></a>
+  <a href="https://kotlinlang.org"><img src="https://img.shields.io/badge/Kotlin%202.0%20%2B%20Compose-7F52FF?style=flat-square" alt="Kotlin" /></a>
+  <img src="https://img.shields.io/badge/%E7%A6%BB%E7%BA%BF-100%25%20%E9%9B%B6%E7%BD%91%E7%BB%9C-orange?style=flat-square" alt="Offline" />
+  <img src="https://img.shields.io/badge/%E5%B9%BF%E5%91%8A-0%20%E6%9D%A1-red?style=flat-square" alt="No Ads" />
+</p>
+
+<p align="center">
+  <a href="https://x33834.github.io/dev-terminal/"><img src="https://img.shields.io/badge/%F0%9F%8C%90_Official_Site-Visit-brightgreen?style=flat-square" alt="Official Site" /></a>
+  <a href="https://github.com/x33834/dev-terminal/releases/latest"><img src="https://img.shields.io/github/v/release/x33834/dev-terminal?style=flat-square&label=release" alt="Latest Release" /></a>
+  <a href="https://gitcode.com/badhope/dev-terminal/releases"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_APK_%E7%9B%B4%E4%B8%8B-GitCode_Release-3A72BE?style=flat-square" alt="APK Download" /></a>
+  <a href="https://gitee.com/badhope/dev-terminal"><img src="https://img.shields.io/badge/Gitee-Mirror-C71D23?style=flat-square" alt="Gitee" /></a>
+</p>
+
+<p align="center"><b>开源仓库</b>：<a href="https://github.com/x33834/dev-terminal">GitHub</a> · <a href="https://gitcode.com/badhope/dev-terminal">GitCode</a> · <a href="https://gitee.com/badhope/dev-terminal">Gitee</a>（三平台内容完全一致）</p>
 
 **一个完全离线的安卓编程终端**：在手机上直接写、跑、调试 Python（首版）与 Java，界面是现代 IDE，而不是命令行的黑框。
 

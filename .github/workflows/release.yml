@@ -1,0 +1,55 @@
+name: Release APK
+
+# 推送 v* tag 自动构建完整离线 APK 并上传到 GitHub Release。
+# 工具链 usrtar.zip（441MB）按 SHA256 从 GitCode Release 拉取，构建产物完全离线可复现。
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Free disk space (APK 内嵌 441MB 工具链，先腾地方)
+        run: |
+          sudo rm -rf /usr/local/lib/android/sdk/ndk \
+                      /usr/local/lib/android/sdk/emulator \
+                      /usr/local/lib/android/sdk/system-images || true
+          df -h /
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Fetch offline toolchain (usrtar.zip, SHA256 校验)
+        run: MIRROR=gitcode bash tools/fetch_toolchain.sh
+
+      - name: Build debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Rename APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk \
+             "dist/DevTerminal-${GITHUB_REF_NAME}-debug.apk"
+          ls -lh dist/
+
+      - name: Upload APK to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "DevTerminal $GITHUB_REF_NAME" \
+            --generate-notes \
+            --latest || true
+          gh release upload "$GITHUB_REF_NAME" dist/*.apk --clobber
+          echo "APK uploaded to release $GITHUB_REF_NAME"
