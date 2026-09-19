@@ -15,11 +15,14 @@
 <p align="center">
   <a href="https://x33834.github.io/dev-terminal/"><img src="https://img.shields.io/badge/%F0%9F%8C%90_Official_Site-Visit-brightgreen?style=flat-square" alt="Official Site" /></a>
   <a href="https://github.com/x33834/dev-terminal/releases/latest"><img src="https://img.shields.io/github/v/release/x33834/dev-terminal?style=flat-square&label=release" alt="Latest Release" /></a>
+  <a href="https://github.com/Morningstar202604/dev-terminal"><img src="https://img.shields.io/badge/GitHub-Mirror-24292F?style=flat-square&logo=github" alt="GitHub Mirror" /></a>
   <a href="https://gitcode.com/badhope/dev-terminal/releases"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_APK_%E7%9B%B4%E4%B8%8B-GitCode_Release-3A72BE?style=flat-square" alt="APK Download" /></a>
   <a href="https://gitee.com/badhope/dev-terminal"><img src="https://img.shields.io/badge/Gitee-Mirror-C71D23?style=flat-square" alt="Gitee" /></a>
 </p>
 
-<p align="center"><b>开源仓库</b>：<a href="https://github.com/x33834/dev-terminal">GitHub</a> · <a href="https://gitcode.com/badhope/dev-terminal">GitCode</a> · <a href="https://gitee.com/badhope/dev-terminal">Gitee</a>（三平台内容完全一致）</p>
+<p align="center"><b>开源仓库</b>（四平台并列，内容完全一致）：<a href="https://github.com/x33834/dev-terminal">GitHub/x33834</a> · <a href="https://github.com/Morningstar202604/dev-terminal">GitHub/Morningstar202604</a> · <a href="https://gitcode.com/badhope/dev-terminal">GitCode</a> · <a href="https://gitee.com/badhope/dev-terminal">Gitee</a></p>
+
+<p align="center"><b>🌐 官网</b>（GitHub Pages 双号部署，内容一致）：<a href="https://x33834.github.io/dev-terminal/">x33834.github.io/dev-terminal</a> · <a href="https://morningstar202604.github.io/dev-terminal/">morningstar202604.github.io/dev-terminal</a></p>
 
 **一个完全离线的安卓编程终端**：在手机上直接写、跑、调试 Python（首版）与 Java，界面是现代 IDE，而不是命令行的黑框。
 
