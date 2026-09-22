@@ -667,7 +667,15 @@ fun EditorScreen(vm: EditorViewModel) {
             onAutoSaveChange = { vm.updateSettings(ui.settings.copy(autoSave = it)) },
             onTimeoutChange = { vm.updateSettings(ui.settings.copy(timeoutSeconds = it)) },
             onAiConfigChange = { url, key, model ->
-                vm.updateSettings(ui.settings.copy(aiBaseUrl = url, aiApiKey = key, aiModel = model))
+                vm.updateSettings(
+                    ui.settings.copy(
+                        aiBaseUrl = url,
+                        aiApiKey = key,
+                        aiModel = model,
+                        // 用户显式保存过一次，才认为「已配置」——默认占位值不算。
+                        aiConfigured = url.isNotBlank()
+                    )
+                )
             },
             onDismiss = ::closeOverlay
         )

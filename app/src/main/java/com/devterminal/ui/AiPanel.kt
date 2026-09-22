@@ -67,7 +67,7 @@ fun AiPanelDialog(
         onDismiss = onDismiss,
         title = "AI 助手",
         confirmLabel = "发送",
-        onConfirm = if (inputDraft.isNotBlank() && !busy) onSend else null
+        onConfirm = if (configured && inputDraft.isNotBlank() && !busy) onSend else null
     ) {
         if (!configured) {
             QuietHint(
@@ -127,9 +127,9 @@ fun AiPanelDialog(
             value = inputDraft,
             onValueChange = onInputChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = "问点什么…",
+            placeholder = if (configured) "问点什么…" else "先在上方完成 AI 配置",
             mono = false,
-            enabled = !busy,
+            enabled = configured && !busy,
             imeAction = ImeAction.Send,
             onImeAction = { if (inputDraft.isNotBlank() && !busy) onSend() }
         )

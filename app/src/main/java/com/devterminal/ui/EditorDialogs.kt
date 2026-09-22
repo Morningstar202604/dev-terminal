@@ -180,7 +180,8 @@ fun AboutDialog(onDismiss: () -> Unit) {
         }
         Spacer(Modifier.height(Dimens.md))
         Text(
-            "完全离线的安卓编程终端。内置 Python / Java 工具链，无需联网即可编写、运行、调试代码。",
+            "完全离线的安卓编程终端。内置 Pyodide（CPython 3.12 编译为 WebAssembly），" +
+                "装好即用，无需联网即可编写、运行 Python 代码。",
             style = MaterialTheme.typography.bodySmall,
             color = cs.muted
         )
@@ -189,7 +190,8 @@ fun AboutDialog(onDismiss: () -> Unit) {
         Spacer(Modifier.height(Dimens.sm))
         listOf(
             "SoraEditor — LGPL-2.1（代码编辑器）",
-            "Termux packages — GPL 等（离线工具链）",
+            "Pyodide — MPL-2.0（离线 Python 运行时）",
+            "CPython — PSF License",
             "Jetpack Compose — Apache-2.0",
             "AndroidX — Apache-2.0"
         ).forEach {
@@ -198,7 +200,8 @@ fun AboutDialog(onDismiss: () -> Unit) {
         }
         Spacer(Modifier.height(Dimens.md))
         Text(
-            "本应用的离线工具链来自 Termux 项目，遵循其相应许可；SoraEditor 以 LGPL 授权，用户可自行替换该库。",
+            "离线 Python 能力由 Pyodide / CPython 提供，遵循其相应许可；" +
+                "SoraEditor 以 LGPL 授权，用户可自行替换该库。",
             style = MaterialTheme.typography.labelSmall,
             color = cs.faint
         )

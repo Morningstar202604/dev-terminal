@@ -18,17 +18,26 @@ data class AppSettings(
      * 默认值指向本机 Ollama 仅作占位示例——手机上一般没有本地推理服务，
      * 不填就用不了。AI 属于可选的在线服务，与「离线执行 Python」无关。
      */
-    val aiBaseUrl: String = "http://127.0.0.1:11434/v1",
+    val aiBaseUrl: String = DEFAULT_AI_BASE_URL,
     val aiApiKey: String = "",
-    val aiModel: String = "qwen2.5-coder:3b",
+    val aiModel: String = DEFAULT_AI_MODEL,
+    /**
+     * 用户是否在设置页显式保存过 AI 配置。
+     *
+     * 不能靠「端点非空」来判断：默认值是占位示例（本机 Ollama），恒非空，
+     * 否则「未配置」引导永远不出现，用户一点 AI 动作就直接发请求然后必然失败。
+     */
+    val aiConfigured: Boolean = false,
     // ---------- Git ----------
     val gitUserName: String = "",
     val gitUserEmail: String = "",
     /** 远程仓库地址（token 可内嵌在 URL 里，如 https://user:token@host/repo.git） */
     val gitRemoteUrl: String = ""
 ) {
-    /** AI 是否已配置（端点非空即视为可用） */
-    val aiConfigured: Boolean get() = aiBaseUrl.isNotBlank()
+    companion object {
+        const val DEFAULT_AI_BASE_URL = "http://127.0.0.1:11434/v1"
+        const val DEFAULT_AI_MODEL = "qwen2.5-coder:3b"
+    }
 }
 
 /**
@@ -48,9 +57,12 @@ class SettingsStore(context: Context) {
         autoSave = prefs.getBoolean(KEY_AUTOSAVE, true),
         timeoutSeconds = prefs.getInt(KEY_TIMEOUT, 120),
         outputHeightDp = prefs.getInt(KEY_OUTPUT_H, 260),
-        aiBaseUrl = prefs.getString(KEY_AI_URL, "http://127.0.0.1:11434/v1") ?: "",
+        aiBaseUrl = prefs.getString(KEY_AI_URL, AppSettings.DEFAULT_AI_BASE_URL)
+            ?: AppSettings.DEFAULT_AI_BASE_URL,
         aiApiKey = prefs.getString(KEY_AI_KEY, "") ?: "",
-        aiModel = prefs.getString(KEY_AI_MODEL, "qwen2.5-coder:3b") ?: "",
+        aiModel = prefs.getString(KEY_AI_MODEL, AppSettings.DEFAULT_AI_MODEL)
+            ?: AppSettings.DEFAULT_AI_MODEL,
+        aiConfigured = prefs.getBoolean(KEY_AI_CONFIGURED, false),
         gitUserName = prefs.getString(KEY_GIT_NAME, "") ?: "",
         gitUserEmail = prefs.getString(KEY_GIT_EMAIL, "") ?: "",
         gitRemoteUrl = prefs.getString(KEY_GIT_REMOTE, "") ?: ""
@@ -66,6 +78,7 @@ class SettingsStore(context: Context) {
             .putString(KEY_AI_URL, s.aiBaseUrl)
             .putString(KEY_AI_KEY, s.aiApiKey)
             .putString(KEY_AI_MODEL, s.aiModel)
+            .putBoolean(KEY_AI_CONFIGURED, s.aiConfigured)
             .putString(KEY_GIT_NAME, s.gitUserName)
             .putString(KEY_GIT_EMAIL, s.gitUserEmail)
             .putString(KEY_GIT_REMOTE, s.gitRemoteUrl)
@@ -108,6 +121,7 @@ class SettingsStore(context: Context) {
         const val KEY_AI_URL = "ai_base_url"
         const val KEY_AI_KEY = "ai_api_key"
         const val KEY_AI_MODEL = "ai_model"
+        const val KEY_AI_CONFIGURED = "ai_configured"
         const val KEY_GIT_NAME = "git_user_name"
         const val KEY_GIT_EMAIL = "git_user_email"
         const val KEY_GIT_REMOTE = "git_remote_url"
