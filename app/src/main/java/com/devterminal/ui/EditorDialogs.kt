@@ -1,5 +1,6 @@
 package com.devterminal.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -68,6 +70,7 @@ fun SettingsDialog(
     onFontSizeChange: (Int) -> Unit,
     onAutoSaveChange: (Boolean) -> Unit,
     onTimeoutChange: (Int) -> Unit,
+    onEditorThemeChange: (String) -> Unit,
     onAiConfigChange: (url: String, key: String, model: String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -123,6 +126,52 @@ fun SettingsDialog(
             style = MaterialTheme.typography.labelSmall,
             color = cs.muted
         )
+
+        Spacer(Modifier.height(Dimens.xl))
+        SectionLabel("编辑器主题")
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "「跟随明暗」随系统深浅自动切换，其余为固定配色。",
+            style = MaterialTheme.typography.labelSmall,
+            color = cs.muted
+        )
+        Spacer(Modifier.height(Dimens.sm))
+        // 两列 chips：一行放不下 7 个选项，竖排又太占高
+        EDITOR_THEMES.chunked(2).forEach { rowThemes ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Dimens.sm)
+            ) {
+                rowThemes.forEach { theme ->
+                    val selected = settings.editorTheme == theme
+                    Surface(
+                        onClick = { onEditorThemeChange(theme) },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (selected) cs.primary.copy(alpha = 0.14f) else cs.surfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            when (theme) {
+                                "auto" -> "跟随明暗"
+                                "darcula" -> "Darcula"
+                                "monokai" -> "Monokai"
+                                "tomorrow-night-blue" -> "明日蓝"
+                                "solarized-dark" -> "Solarized 暗"
+                                "solarized-light" -> "Solarized 亮"
+                                else -> theme
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (selected) cs.primary else cs.muted,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp)
+                        )
+                    }
+                }
+                // 最后一行可能只有 1 个，补一个空位保持对齐
+                if (rowThemes.size == 1) Spacer(Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(Dimens.sm))
+        }
 
         Spacer(Modifier.height(Dimens.xl))
         SectionLabel("AI 助手（可选）")

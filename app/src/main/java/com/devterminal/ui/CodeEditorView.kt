@@ -38,9 +38,21 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.atomic.AtomicReference
 
+/**
+ * 编辑器主题清单：assets/textmate/themes 下的文件名（不含扩展名）。
+ * "auto" 不在其中——它表示跟随 App 明暗，在 [resolveTheme] 里解析。
+ */
+val EDITOR_THEMES = listOf("auto", "darcula", "monokai", "tomorrow-night-blue", "solarized-dark", "quiet-light", "solarized-light")
+
 /** 深色 / 浅色两套 TextMate 主题名（与 assets/textmate/themes 下的文件对应） */
 private const val THEME_DARK = "darcula"
 private const val THEME_LIGHT = "quiet-light"
+
+/** "auto" 按明暗解析成具体主题名；其余原样返回（未知值兜底回 auto 行为） */
+private fun resolveTheme(editorTheme: String, dark: Boolean): String =
+    if (editorTheme == "auto" || editorTheme !in EDITOR_THEMES) {
+        if (dark) THEME_DARK else THEME_LIGHT
+    } else editorTheme
 
 /**
  * 基于 SoraEditor 的代码编辑器（经 AndroidView 桥接进 Compose）。
@@ -68,6 +80,8 @@ fun CodeEditorView(
     fontSize: Int = 14,
     language: DevLanguage = DevLanguage.PYTHON,
     darkTheme: Boolean = true,
+    /** 编辑器主题："auto" 跟随明暗，其余为 [EDITOR_THEMES] 里的固定主题 */
+    editorTheme: String = "auto",
     onCursorChange: (Int, Int) -> Unit = { _, _ -> },
     /** 每次自增触发一次插入，insertText 为要插入的内容 */
     insertSignal: Long = 0,
@@ -129,10 +143,12 @@ fun CodeEditorView(
         applyLanguage(editor, file, language, docRef)
     }
 
-    // 明暗切换 → 换主题。主题切换后必须重建 colorScheme 才会生效
-    LaunchedEffect(textMateReady, darkTheme) {
+    // 主题切换（含 auto 跟随明暗）→ 换主题。主题切换后必须重建 colorScheme 才会生效
+    LaunchedEffect(textMateReady, editorTheme, darkTheme) {
         if (!textMateReady) return@LaunchedEffect
-        withContext(Dispatchers.IO) { runCatching { ThemeRegistry.getInstance().setTheme(themeName(darkTheme)) } }
+        withContext(Dispatchers.IO) {
+            runCatching { ThemeRegistry.getInstance().setTheme(resolveTheme(editorTheme, darkTheme)) }
+        }
         applyScheme(editor)
         applyLanguage(editor, file, language, docRef)
     }
@@ -238,8 +254,6 @@ fun CodeEditorView(
     )
 }
 
-private fun themeName(dark: Boolean): String = if (dark) THEME_DARK else THEME_LIGHT
-
 /** 装配语言：TextMate 高亮 + 静态补全 */
 private fun applyLanguage(
     editor: CodeEditor,
@@ -284,8 +298,9 @@ private fun initTextMate(assets: android.content.res.AssetManager) {
                 io.github.rosemoe.sora.langs.textmate.registry.provider.AssetsFileResolver(assets)
             )
         GrammarRegistry.getInstance().loadGrammars("textmate/languages.json")
+        // 全部主题一次性载入注册表，设置里切换时零 IO 等待
         val registry = ThemeRegistry.getInstance()
-        listOf(THEME_DARK, THEME_LIGHT).forEach { name ->
+        EDITOR_THEMES.filter { it != "auto" }.forEach { name ->
             val source = org.eclipse.tm4e.core.registry.IThemeSource.fromInputStream(
                 assets.open("textmate/themes/$name.json"),
                 "$name.json",

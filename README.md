@@ -67,6 +67,9 @@
 |---|---|---|
 | Python 运行 | ✅ 完整可用 | CPython 标准库全量，完全离线 |
 | numpy / pandas | ✅ 预装 | 官方 Pyodide wheel 随 APK 分发，按 `import` 自动装载，零网络 |
+| matplotlib | ✅ 预装 | 离线画图 `savefig` PNG，同上（v0.8.0）；WASM 沙箱无窗口，`plt.show()` 不会弹窗，请用 `plt.savefig("x.png")` |
+| Markdown / HTML 预览 | ✅ 可用 | 编辑器分屏实时渲染，GFM 表格/删除线（v0.8.0） |
+| 编辑器主题 | ✅ 6 套 | Darcula / Quiet Light / Monokai / 明日蓝 / Solarized 暗·亮（v0.8.0） |
 | `input()` 交互 | ✅ 可用 | 输出面板下方输入行，运行中可实时喂入 |
 | 死循环保护 | ✅ 可用 | 超时通过 WASM 中断缓冲触发 KeyboardInterrupt |
 | **Java 运行** | ❌ 不可用 | **JVM 无法运行于 WASM 沙箱**，仅保留编辑与语法高亮 |
@@ -80,10 +83,9 @@
 
 - [x] 预打包常用 Pyodide wheel（numpy / pandas），离线可直接 import（v0.7.0）
 - [x] 以 JGit（纯 Java）恢复 Git 状态 / 提交 / 推送（v0.7.0）
-- [ ] matplotlib 离线包（约 25MB，按需评估）
-- [ ] 正则查找 / 大小写开关（Acode 已有）
-- [ ] 编辑器主题选择（当前仅 darcula，Spck 有多主题）
-- [ ] Markdown / HTML 实时预览（Spck 的核心卖点）
+- [x] matplotlib 离线包（v0.8.0）
+- [x] 编辑器主题选择（v0.8.0，6 套 TextMate 配色）
+- [x] Markdown / HTML 实时预览（v0.8.0，编辑器分屏 + 防抖刷新）
 - [ ] 三态主题：跟随系统（当前深浅二选一）
 - [ ] 逐字符 pty 输入（方向键 / Tab 补全，需要完整终端模拟）
 - [ ] pip 离线包管理器（预装 wheel 缓存）
@@ -451,11 +453,12 @@ Java 文件仍可打开编辑与高亮，但点运行会提示「Java 运行暂�
 | M13 | **架构重构**：执行引擎换为 Pyodide（WASM），彻底移除 441MB 外置工具链依赖，真正做到装完即离线 | ✅ |
 | M14 | **数据科学栈**：numpy / pandas 官方 wheel 随 APK 分发，`import` 即用零网络（v0.7.0） | ✅ |
 | M15 | **Git 回归**：JGit（纯 Java）驱动 Git 面板全功能，依旧离线（v0.7.0） | ✅ |
+| M16 | **可视化与预览**：matplotlib 离线画图 + Markdown/HTML 分屏实时预览 + 6 套编辑器主题（v0.8.0） | ✅ |
 
 ## 已知限制
 
-- **APK 体积**：v0.7.0 debug 包实测 **43MB**（13MB Pyodide 运行时 + 37MB numpy/pandas
-  wheel 在包内压缩后约 11MB 增量 + JGit/语法资源），
+- **APK 体积**：v0.8.0 debug 包实测 **53MB**（13MB Pyodide 运行时 + 数据科学与绘图 wheel
+  约 61MB 原始体积压缩后约 20MB 增量 + JGit/主题/语法资源），
   装完即用、无需任何下载。不适合走 Google Play（前台服务 specialUse 声明繁琐），
   建议 F-Droid / GitCode Releases / 官网直下。
 - **Java 执行不可用**：JVM 无法运行于 WebAssembly 沙箱。编辑与语法高亮正常保留。
@@ -484,7 +487,7 @@ Java 文件仍可打开编辑与高亮，但点运行会提示「Java 运行暂�
 
 ## 镜像构建指南（无 Android SDK 也能出包）
 
-本项目已在 **无 Android SDK 的纯 Linux 沙盒** 内真实构建出 APK（v0.7.0，43MB）。
+本项目已在 **无 Android SDK 的纯 Linux 沙盒** 内真实构建出 APK（v0.8.0，53MB）。
 构建全程使用国内镜像，无需访问 Google 服务器：
 
 | 组件 | 镜像 |

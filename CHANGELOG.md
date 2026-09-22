@@ -2,6 +2,30 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.8.0] — 2026-09-22
+
+### 新增
+- **matplotlib 离线画图**：3.5.2 及全部依赖（pillow / fonttools / kiwisolver / cycler /
+  packaging / pyparsing / matplotlib-pyodide）随 APK 打包，约 24MB，
+  sha256 与 Pyodide 0.26.4 lock 完全一致；`import matplotlib.pyplot` 即用，零网络。
+  > 端到端验证：无头 Chromium 实测 `savefig` 输出合法 PNG（19143 字节，魔数 89504e47）。
+- **编辑器多主题**：新增 Monokai / 明日蓝 / Solarized 暗 / Solarized 亮 四套
+  TextMate 配色（源自 VS Code 内置主题，MIT），加上原有 Darcula / Quiet Light 共 6 套；
+  设置页新增「编辑器主题」选择，「跟随明暗」为默认值，与旧版行为向后兼容。
+  全部主题一次性预载入注册表，切换零 IO 等待。
+- **Markdown / HTML 实时预览**：打开 .md / .html 文件后，顶栏或命令面板可开启
+  编辑器分屏预览（上编辑 / 下渲染）；基于 org.jetbrains:markdown 0.7.3
+  （IntelliJ 同款解析器，GFM 方言支持表格/删除线/任务列表）。
+  编辑停止 350ms 后自动刷新（collectLatest 防抖，只渲染最后一次输入）；
+  预览 WebView 禁用 JavaScript 与 file:// 访问；超 500K 字符的文件分段渲染保护。
+
+### 测试
+- 新增 `MarkdownRendererTest`（6 例）：标题/加粗、GFM 表格、代码块转义、
+  页面壳明暗背景、HTML 直通、畸形输入兜底。全部 29 例通过。
+
+### 变更
+- 版本号 0.8.0（versionCode 9）；切到不可预览文件时预览分屏自动收起。
+
 ## [0.7.0] — 2026-09-22
 
 ### 新增

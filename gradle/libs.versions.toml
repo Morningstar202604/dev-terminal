@@ -22,6 +22,8 @@ androidxWebkit = "1.12.1"
 # 选 6.x（Java 11 字节码）而非 7.x（Java 17）：Android D8 兼容面更稳。
 jgit = "6.10.1.202505221210-r"
 slf4jNop = "2.0.13"
+# IntelliJ 平台同款 Markdown 解析器（纯 Kotlin，GFM 表格/删除线），实时预览用
+intellijMarkdown = "0.7.3"
 
 [libraries]
 # --- Compose（版本由 BOM 统一约束）---
@@ -45,6 +47,9 @@ androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "a
 jgit = { group = "org.eclipse.jgit", name = "org.eclipse.jgit", version.ref = "jgit" }
 # 静默 JGit 的日志门面（Android 上无 SLF4J 绑定时会往 logcat 刷警告）
 slf4j-nop = { group = "org.slf4j", name = "slf4j-nop", version.ref = "slf4jNop" }
+
+# --- Markdown 解析（实时预览，Apache-2.0） ---
+intellij-markdown = { group = "org.jetbrains", name = "markdown", version.ref = "intellijMarkdown" }
 
 # --- 代码编辑器：SoraEditor (LGPL-2.1) ---
 # 若产品闭源，需保证用户可替换该库（动态链接 + 提供目标文件）。

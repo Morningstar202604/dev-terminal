@@ -41,7 +41,20 @@
   提供 init / status / commit / push / pull 能力，无外部二进制依赖。
 - 附带组件：SLF4J（`slf4j-api` / `slf4j-nop`，MIT）。
 
-## 5. AndroidX / Jetpack Compose / Kotlin / androidx.webkit
+## 5. org.jetbrains:markdown（Markdown 解析，实时预览）
+
+- 项目地址：https://github.com/JetBrains/markdown
+- 许可证：**Apache-2.0**。
+- 使用方式：通过 Maven（`org.jetbrains:markdown`）以公开 API 动态链接，
+  提供 GFM 方言的 Markdown → HTML 渲染（预览面板）。
+
+## 6. 编辑器 TextMate 主题（Monokai / Solarized / Tomorrow Night Blue）
+
+- 来源：**Visual Studio Code** 内置主题（https://github.com/microsoft/vscode，
+  `extensions/theme-*`），已转换为 tm4e 兼容格式并去除注释。
+- 许可证：**MIT**（VS Code 项目）。版权与许可声明随文件与仓库分发保留。
+
+## 7. AndroidX / Jetpack Compose / Kotlin / androidx.webkit
 
 - 许可证：Apache-2.0
 - 通过 Maven Central 分发的官方 Android 组件。

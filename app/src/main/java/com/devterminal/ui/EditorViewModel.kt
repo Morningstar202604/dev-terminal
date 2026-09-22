@@ -102,7 +102,12 @@ data class UiState(
     val aiInputDraft: String = "",
     // ---------- 全局搜索（v0.3） ----------
     val globalSearching: Boolean = false,
-    val globalResults: List<SearchHit> = emptyList()
+    val globalResults: List<SearchHit> = emptyList(),
+    // ---------- 实时预览（v0.5，Markdown / HTML） ----------
+    /** 预览分屏是否展开（仅当前文件为 .md/.html 时可开） */
+    val previewVisible: Boolean = false,
+    /** 预览面板的完整 HTML 文档（防抖后由 renderPreview 刷新） */
+    val previewHtml: String = ""
 )
 
 class EditorViewModel(app: Application) : AndroidViewModel(app) {
@@ -273,6 +278,8 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                     editorText = content,
                     dirty = false,
                     languageLabel = languageLabelOf(file),
+                    // 切到不可预览的文件时自动收起预览分屏，避免留下空面板
+                    previewVisible = st.previewVisible && isPreviewable(file),
                     // 打开新文件自动挂到 Tab 条上（已打开的不重复加）
                     openTabs = st.openTabs.let { tabs ->
                         if (tabs.any { it.absolutePath == file.absolutePath }) tabs else tabs + file
@@ -572,6 +579,43 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun consumeMessage() { _ui.update { it.copy(message = null) } }
+
+    // ---------- 实时预览（Markdown / HTML） ----------
+
+    /** 当前文件是否可预览 */
+    fun isPreviewable(file: File?): Boolean =
+        file?.extension?.lowercase() in setOf("md", "markdown", "htm", "html")
+
+    /** 切换预览分屏；打开时立即渲染一次 */
+    fun togglePreview() {
+        val file = _ui.value.currentFile
+        if (!_ui.value.previewVisible && !isPreviewable(file)) {
+            _ui.update { it.copy(message = "只有 .md / .html 文件支持预览", messageSeq = it.messageSeq + 1) }
+            return
+        }
+        _ui.update { it.copy(previewVisible = !it.previewVisible) }
+        if (_ui.value.previewVisible) renderPreview()
+    }
+
+    /**
+     * 按当前文件与内容生成预览 HTML。
+     * 在编辑分屏打开期间，由 UI 层对 editorText 做防抖后调用（collectLatest + delay）。
+     */
+    fun renderPreview() {
+        val file = _ui.value.currentFile ?: return
+        val text = _ui.value.editorText
+        val dark = _ui.value.settings.darkTheme
+        viewModelScope.launch {
+            val html = withContext(Dispatchers.Default) {
+                when (file.extension.lowercase()) {
+                    "htm", "html" -> com.devterminal.engine.MarkdownRenderer.pageForHtml(text, dark)
+                    else -> com.devterminal.engine.MarkdownRenderer.pageForMarkdown(text, dark)
+                }
+            }
+            // 只在预览仍然打开时落地，避免快速开关后旧结果闪现
+            if (_ui.value.previewVisible) _ui.update { it.copy(previewHtml = html) }
+        }
+    }
 
     /** 更新设置并持久化 */
     fun updateSettings(newSettings: com.devterminal.settings.AppSettings) {

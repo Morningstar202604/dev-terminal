@@ -14,8 +14,8 @@ android {
         applicationId = "com.devterminal"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 8
-        versionName = "0.7.0"
+        versionCode = 9
+        versionName = "0.8.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -89,6 +89,9 @@ dependencies {
     // ===== Git：JGit（纯 Java，恢复完整 Git 能力，同样离线） =====
     implementation(libs.jgit)
     implementation(libs.slf4j.nop)
+
+    // ===== Markdown 解析：实时预览用（纯 Kotlin，GFM 方言） =====
+    implementation(libs.intellij.markdown)
 
     // 单元测试：纯 JVM 逻辑（如报错行解析）不依赖 Android 框架，可直接跑
     testImplementation(libs.junit)

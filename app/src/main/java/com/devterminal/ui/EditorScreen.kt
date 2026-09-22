@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.HealthAndSafety
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.Preview
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
@@ -66,6 +67,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -90,6 +92,8 @@ import com.devterminal.ui.theme.Motion
 import com.devterminal.ui.theme.faint
 import com.devterminal.ui.theme.hairline
 import com.devterminal.ui.theme.muted
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.roundToInt
@@ -118,6 +122,15 @@ fun EditorScreen(vm: EditorViewModel) {
     // 既可以同时为 true（弹窗叠弹窗），也容易漏掉打开时的副作用。
     var overlay by remember { mutableStateOf<Overlay>(Overlay.None) }
     fun closeOverlay() { overlay = Overlay.None }
+
+    // 预览防抖：分屏打开期间，编辑文本停止变化 350ms 后才真正重渲染，
+    // 敲每个字都重新生成 HTML 会又卡又闪。collectLatest 保证连续输入只落最后一次。
+    LaunchedEffect(ui.previewVisible, ui.currentFile?.path) {
+        if (!ui.previewVisible) return@LaunchedEffect
+        vm.renderPreview()  // 打开/切文件时立即渲染一次
+        snapshotFlow { ui.editorText }
+            .collectLatest { delay(350); vm.renderPreview() }
+    }
 
     /** 跳转到报错行的请求（seq 自增保证连续点同一行也能响应） */
     var scrollToLine by remember { mutableStateOf<ScrollToLineRequest?>(null) }
@@ -322,6 +335,14 @@ fun EditorScreen(vm: EditorViewModel) {
                         }
                     },
                     actions = {
+                        // 预览开关：只有 Markdown / HTML 文件出现
+                        if (vm.isPreviewable(ui.currentFile)) {
+                            QuietIconButton(
+                                Icons.Outlined.Preview, "实时预览",
+                                onClick = { vm.togglePreview() },
+                                tint = if (ui.previewVisible) cs.primary else cs.muted
+                            )
+                        }
                         // 命令面板：其余动作的归处，保持顶栏清爽
                         QuietIconButton(
                             Icons.Outlined.Terminal, "命令面板",
@@ -432,6 +453,7 @@ fun EditorScreen(vm: EditorViewModel) {
                     language = if (ui.currentFile?.extension.equals("java", ignoreCase = true))
                         Language.JAVA else Language.PYTHON,
                     darkTheme = ui.settings.darkTheme,
+                    editorTheme = ui.settings.editorTheme,
                     onCursorChange = vm::onCursorChanged,
                     insertSignal = ui.insertSignal,
                     insertText = ui.insertText,
@@ -451,6 +473,14 @@ fun EditorScreen(vm: EditorViewModel) {
                     scrollToLine = scrollToLine,
                     modifier = Modifier.fillMaxWidth().weight(1f)
                 )
+                // 实时预览分屏：与编辑器对半分（仅 .md / .html 文件可开）
+                if (ui.previewVisible) {
+                    PreviewPane(
+                        html = ui.previewHtml,
+                        darkTheme = ui.settings.darkTheme,
+                        modifier = Modifier.fillMaxWidth().weight(1f)
+                    )
+                }
                 SymbolBar(
                     onInsert = { vm.insertSymbol(it) },
                     onBackspace = { vm.backspaceSymbol() }
@@ -580,6 +610,7 @@ fun EditorScreen(vm: EditorViewModel) {
                     "ai" -> overlay = Overlay.Ai
                     "gsearch" -> overlay = Overlay.GlobalSearch
                     "runconfig" -> overlay = Overlay.RunConfig
+                    "preview" -> vm.togglePreview()
                     "export" -> exportLauncher.launch(vm.suggestedExportName())
                 } }
             ),
@@ -666,6 +697,9 @@ fun EditorScreen(vm: EditorViewModel) {
             onFontSizeChange = { vm.updateSettings(ui.settings.copy(editorFontSize = it)) },
             onAutoSaveChange = { vm.updateSettings(ui.settings.copy(autoSave = it)) },
             onTimeoutChange = { vm.updateSettings(ui.settings.copy(timeoutSeconds = it)) },
+            onEditorThemeChange = { theme ->
+                vm.updateSettings(ui.settings.copy(editorTheme = theme))
+            },
             onAiConfigChange = { url, key, model ->
                 vm.updateSettings(
                     ui.settings.copy(
@@ -908,6 +942,8 @@ private fun buildCommands(
         Icons.Filled.AutoAwesome) { onCommand("ai") })
     add(Command("runconfig", "运行配置", "命令行参数 / Java 主类",
         Icons.Outlined.Terminal) { onCommand("runconfig") })
+    add(Command("preview", "实时预览", "Markdown / HTML 分屏渲染",
+        Icons.Outlined.Preview) { onCommand("preview") })
     add(Command("newproj", "新建项目", "${Templates.all.size} 个模板",
         Icons.Filled.Add) { onCommand("newproj") })
     add(Command("export", "导出当前文件", "通过 SAF 写到手机任意位置",
