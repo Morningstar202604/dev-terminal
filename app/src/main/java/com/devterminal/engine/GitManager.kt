@@ -1,26 +1,23 @@
 package com.devterminal.engine
 
+import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
 import java.io.File
 
 /**
- * Git 操作管理。
+ * Git 操作管理（JGit 版）。
  *
- * ## 当前状态：暂不可用（诚实标注）
- * 旧实现调用内置工具链里的 `git` 原生二进制（`files/usr/bin/git`）。
- * 该工具链方案已废弃——它不入库、必须联网下载 441MB，与「真离线」定位矛盾。
+ * ## 为什么是 JGit
+ * Pyodide（WebAssembly）架构下无法运行 git 原生二进制，旧的原生工具链方案
+ * （441MB 外置包）也已废弃。JGit 是纯 Java 实现，随 APK 打包即用：
+ * init / status / commit / push / pull 全部在应用进程内完成，依旧零联网依赖
+ * （push/pull 走用户配置的远程地址，与桌面端 git 同理）。
  *
- * 在 Pyodide（WebAssembly）架构下，Python 由内置 WASM 解释器执行，
- * 但 **WASM 沙箱内无法运行 git 原生二进制**，因此 Git 能力暂时下线。
- *
- * ## 后续恢复方案（不在本轮范围）
- * 引入 JGit（纯 Java 实现，无外部二进制依赖）即可恢复完整 Git 能力，
- * 且同样离线可用。这属于独立阶段的工作，避免为次要模块影响主线稳定性。
- *
- * ## 本类为何还保留
- * UI 层（GitPanel / 状态栏 / 命令面板）已完整实现并引用本类，
- * 保留接口可让 UI 零改动，后续接入 JGit 时只需替换内部实现。
+ * ## 接口约定
+ * 与旧版（git CLI）完全一致，UI 层（GitPanel / ViewModel）零改动。
+ * 所有方法返回用户可读的中文字符串，成功与失败都不抛异常到 UI 层。
  */
-class GitManager(private val installer: EnvironmentInstaller) {
+class GitManager {
 
     /** 仓库状态快照 */
     data class GitStatus(
@@ -34,30 +31,153 @@ class GitManager(private val installer: EnvironmentInstaller) {
 
     data class Change(val statusCode: String, val path: String)
 
-    companion object {
-        /** 统一的「暂不可用」说明，UI 直接展示 */
-        const val UNAVAILABLE_MSG =
-            "Git 暂不可用：本版运行于 WebAssembly 架构，沙箱内无法运行 git 二进制。" +
-                "后续将通过 JGit（纯 Java 实现）恢复，同样无需联网。"
+    /** JGit 纯 Java，随 APK 分发，天然可用 */
+    fun isGitInstalled(): Boolean = true
+
+    /** 打开目录对应的仓库；不是仓库或打开失败返回 null */
+    private fun openOrNull(dir: File): Git? =
+        if (!File(dir, ".git").exists()) null
+        else runCatching { Git.open(dir) }.getOrNull()
+
+    /** 读取仓库状态：分支 / 变更列表 / 领先落后 / 最近提交 */
+    fun status(dir: File): GitStatus {
+        val git = openOrNull(dir) ?: return GitStatus(isRepo = false, branch = "", changes = emptyList())
+        return git.use { g ->
+            runCatching {
+                val st = g.status().call()
+                // 状态码沿用 git CLI 惯例：?? 未跟踪；第一列暂存区，第二列工作区
+                val changes = buildList {
+                    st.added.forEach { add(Change("A ", it)) }
+                    st.changed.forEach { add(Change("M ", it)) }
+                    st.removed.forEach { add(Change("D ", it)) }
+                    st.modified.forEach { add(Change(" M", it)) }
+                    st.missing.forEach { add(Change(" D", it)) }
+                    st.untracked.forEach { add(Change("??", it)) }
+                }
+                val branch = g.repository.branch ?: "HEAD"
+                var ahead = 0
+                var behind = 0
+                runCatching {
+                    org.eclipse.jgit.lib.BranchTrackingStatus.of(g.repository, branch)?.let {
+                        ahead = it.aheadCount
+                        behind = it.behindCount
+                    }
+                }
+                // 刚 init、还没有首次提交时 HEAD 未出生，log() 会抛 NoHeadException——
+                // 这属于「仓库正常但暂无提交」，不能让整个 status 被它吞掉
+                val commits = runCatching {
+                    g.log().setMaxCount(3).call()
+                        .map { "${it.name().take(7)} ${it.shortMessage}" }
+                        .toList()
+                }.getOrDefault(emptyList())
+                GitStatus(true, branch, changes, ahead, behind, commits)
+            }.getOrElse { GitStatus(isRepo = false, branch = "", changes = emptyList()) }
+        }
     }
 
-    /** 本版恒为 false —— git 能力已随原生工具链一并下线 */
-    fun isGitInstalled(): Boolean = false
+    /** 初始化仓库（分支固定 main，与 UI 文案一致），并写入用户身份 */
+    fun init(dir: File, userName: String, userEmail: String): String =
+        guarded("初始化") {
+            Git.init().setDirectory(dir).setInitialBranch("main").call().use { g ->
+                saveIdentity(g, userName, userEmail)
+                "已初始化仓库（分支 main）· 身份 ${userName.ifBlank { "devterminal" }}"
+            }
+        }
 
-    /** 读取仓库状态：本版直接返回「非仓库」 */
-    fun status(dir: File): GitStatus =
-        GitStatus(isRepo = false, branch = "", changes = emptyList())
+    /** 暂存全部变更并提交（含删除） */
+    fun commitAll(dir: File, message: String, userName: String, userEmail: String): String {
+        if (message.isBlank()) return "提交信息不能为空"
+        val git = openOrNull(dir) ?: return "还不是 Git 仓库：请先「初始化仓库」"
+        return git.use { g ->
+            guarded("提交") {
+                g.add().addFilepattern(".").call()
+                if (g.status().call().isClean) {
+                    "没有可提交的变更（工作区干净）"
+                } else {
+                    val cmd = g.commit().setMessage(message.trim()).setAll(true)
+                    if (userName.isNotBlank()) {
+                        cmd.setAuthor(userName, userEmail.ifBlank { "dev@terminal.local" })
+                    }
+                    val rev = cmd.call()
+                    "已提交 ${rev.name().take(7)}：${message.trim()}"
+                }
+            }
+        }
+    }
 
-    /** 初始化仓库：本版不可用 */
-    fun init(dir: File, userName: String, userEmail: String): String = UNAVAILABLE_MSG
+    /** 推送到远程（remoteUrl 支持 https://user:token@host/repo.git 内嵌凭据） */
+    fun push(dir: File, remoteUrl: String): String {
+        if (remoteUrl.isBlank()) return "尚未配置远程地址：在下方「配置身份 / 远程」里填写"
+        val git = openOrNull(dir) ?: return "还不是 Git 仓库：请先「初始化仓库」"
+        return git.use { g ->
+            guarded("推送") {
+                ensureRemote(g, remoteUrl)
+                val cmd = g.push().setRemote("origin")
+                credentials(remoteUrl)?.let { cmd.setCredentialsProvider(it) }
+                val updates = cmd.call().asSequence()
+                    .flatMap { it.remoteUpdates }
+                    .joinToString("，") { "${it.remoteName}:${it.status}" }
+                "已推送到 ${hostOf(remoteUrl)}${if (updates.isBlank()) "" else " · $updates"}"
+            }
+        }
+    }
 
-    /** 提交：本版不可用 */
-    fun commitAll(dir: File, message: String, userName: String, userEmail: String): String =
-        UNAVAILABLE_MSG
+    /** 拉取并合并远程分支 */
+    fun pull(dir: File, remoteUrl: String): String {
+        if (remoteUrl.isBlank()) return "尚未配置远程地址：在下方「配置身份 / 远程」里填写"
+        val git = openOrNull(dir) ?: return "还不是 Git 仓库：请先「初始化仓库」"
+        return git.use { g ->
+            guarded("拉取") {
+                ensureRemote(g, remoteUrl)
+                val cmd = g.pull().setRemote("origin")
+                credentials(remoteUrl)?.let { cmd.setCredentialsProvider(it) }
+                val result = cmd.call()
+                val merge = result.mergeResult?.mergeStatus?.toString() ?: "已完成"
+                "拉取完成（${hostOf(remoteUrl)}）· 合并：$merge"
+            }
+        }
+    }
 
-    /** 推送：本版不可用 */
-    fun push(dir: File, remoteUrl: String): String = UNAVAILABLE_MSG
+    // ---------- 内部工具 ----------
 
-    /** 拉取：本版不可用 */
-    fun pull(dir: File, remoteUrl: String): String = UNAVAILABLE_MSG
+    /** 统一兜底：JGit 异常转用户可读文案，不让 UI 层接异常 */
+    private inline fun guarded(action: String, block: () -> String): String = try {
+        block()
+    } catch (e: Exception) {
+        val reason = e.message?.lineSequence()?.firstOrNull()?.take(160) ?: e.javaClass.simpleName
+        "${action}失败：$reason"
+    }
+
+    /** 写入 user.name / user.email，保证 commit 在未配置全局 gitconfig 时也能完成 */
+    private fun saveIdentity(g: Git, userName: String, userEmail: String) {
+        val cfg = g.repository.config
+        cfg.setString("user", null, "name", userName.ifBlank { "devterminal" })
+        cfg.setString("user", null, "email", userEmail.ifBlank { "dev@terminal.local" })
+        cfg.save()
+    }
+
+    /** origin 不存在或地址变化时写入 URL 与 fetch 规则 */
+    private fun ensureRemote(g: Git, remoteUrl: String) {
+        val cfg = g.repository.config
+        if (cfg.getString("remote", "origin", "url") != remoteUrl) {
+            cfg.setString("remote", "origin", "url", remoteUrl)
+            cfg.setString("remote", "origin", "fetch", "+refs/heads/*:refs/remotes/origin/*")
+            cfg.save()
+        }
+    }
+
+    /**
+     * 从 URL 提取内嵌凭据（https://user:token@…）。
+     * JGit 不会自动采用 URL 里的 userinfo，必须显式转成 CredentialsProvider。
+     */
+    private fun credentials(remoteUrl: String): UsernamePasswordCredentialsProvider? {
+        val m = Regex("^(https?://)([^/@:]+):([^@]*)@(.+)$").find(remoteUrl.trim()) ?: return null
+        val (_, _, user, pass) = m.groupValues
+        return UsernamePasswordCredentialsProvider(user, pass)
+    }
+
+    /** 只取主机名用于结果回显，不回显完整 URL（避免把内嵌 token 打到屏幕上） */
+    private fun hostOf(remoteUrl: String): String = runCatching {
+        java.net.URI(remoteUrl.trim().replaceFirst(Regex("^(https?://)[^/@]+@"), "$1")).host
+    }.getOrNull() ?: "远程"
 }

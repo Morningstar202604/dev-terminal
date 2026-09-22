@@ -66,11 +66,11 @@
 | 能力 | 状态 | 说明 |
 |---|---|---|
 | Python 运行 | ✅ 完整可用 | CPython 标准库全量，完全离线 |
-| 第三方库（numpy/pandas 等） | ⚠️ 未预装 | Pyodide 有预编译 wheel，但需随 APK 打包才能离线用 |
+| numpy / pandas | ✅ 预装 | 官方 Pyodide wheel 随 APK 分发，按 `import` 自动装载，零网络 |
 | `input()` 交互 | ✅ 可用 | 输出面板下方输入行，运行中可实时喂入 |
 | 死循环保护 | ✅ 可用 | 超时通过 WASM 中断缓冲触发 KeyboardInterrupt |
 | **Java 运行** | ❌ 不可用 | **JVM 无法运行于 WASM 沙箱**，仅保留编辑与语法高亮 |
-| **Git 操作** | ❌ 暂不可用 | 原依赖 git 二进制；后续将接 JGit（纯 Java）恢复 |
+| **Git 操作** | ✅ 可用 | JGit（纯 Java）随 APK 打包：init / commit / push / pull，依旧离线 |
 | 性能 | ⚠️ 约为原生的 1/10~1/50 | WASM 沙箱的固有代价，脚本/学习场景无感 |
 
 > **AI 助手不属于上表**：它是可选的在设置页配置的**在线服务**（BYOK），
@@ -78,8 +78,9 @@
 
 ### Roadmap（主动承认差距）
 
-- [ ] 预打包常用 Pyodide wheel（numpy / pandas），离线可直接 import
-- [ ] 以 JGit（纯 Java）恢复 Git 状态 / 提交 / 推送
+- [x] 预打包常用 Pyodide wheel（numpy / pandas），离线可直接 import（v0.7.0）
+- [x] 以 JGit（纯 Java）恢复 Git 状态 / 提交 / 推送（v0.7.0）
+- [ ] matplotlib 离线包（约 25MB，按需评估）
 - [ ] 正则查找 / 大小写开关（Acode 已有）
 - [ ] 编辑器主题选择（当前仅 darcula，Spck 有多主题）
 - [ ] Markdown / HTML 实时预览（Spck 的核心卖点）
@@ -125,7 +126,7 @@ dev-terminal/
 │   │   ├── EnvDiagnostics.kt          环境自检（校验 APK 内运行时资源完整性）
 │   │   ├── FriendlyError.kt           报错翻译成人话
 │   │   ├── CompletionProvider.kt      静态补全词表 + 文档符号提取
-│   │   ├── GitManager.kt              Git 操作（本版不可用，待接 JGit）
+│   │   ├── GitManager.kt              Git 操作（JGit 纯 Java，离线）
 │   │   ├── AiClient.kt                AI 客户端（OpenAI 兼容，v0.3）
 │   │   ├── Snippets.kt                代码片段库（v0.3）
 │   │   ├── ExecutionService.kt        前台服务保活（防 Android 12+ 杀进程）
@@ -196,14 +197,14 @@ Python 的 `input()`、`raw_input()` 等阻塞式读取都能正常交互。
 
 ### 5. 环境自检与友好报错
 
-**自检**（抽屉 → 「环境自检」）：真实启动每个工具进程，逐项显示 Python / pip / Java / javac / Git
-是否可用、版本号、占用空间。失败的项会说明原因（未安装 / 无执行权限 / 架构不匹配）。
+**自检**（抽屉 → 「环境自检」）：逐项显示运行时资源完整性（解释器 / 标准库 / 运行器页面）
+与各能力状态（Python 执行、numpy/pandas 预装、Git/JGit、Java）。失败的项会说明原因。
 
 **友好报错**：运行失败时自动把原始报错翻译成可操作的中文提示，覆盖 20+ 高频错误：
 
 | 原始报错 | 提示 |
 |---|---|
-| `ModuleNotFoundError: No module named 'numpy'` | 缺模块「numpy」+ 说明离线环境要预装 |
+| `ModuleNotFoundError: No module named 'xxx'` | 内置库仅 numpy / pandas 及其依赖；其它库需按 Roadmap 方式自行扩展 wheel |
 | `IndentationError` | 缩进不一致，建议统一 4 空格 |
 | `EOFError` | 程序在等输入但读到 EOF，用底部输入行喂入 |
 | `KeyboardInterrupt` | 通常是超时保护触发了中断（死循环被安全终止） |
@@ -313,18 +314,17 @@ Compose 图标 import 完整性、package 与目录一致性、未使用的 impo
 ——所有功能一个输入框直达。移动端放不下 N 层菜单，「搜索式导航」是最省屏幕空间的
 交互（Cursor / VS Code 的核心范式）。
 
-### 21. Git 面板（v0.3）— ⚠️ 本版暂不可用
+### 21. Git 面板（v0.3，v0.7.0 起由 JGit 驱动 ✅）
 
-> **状态说明**：原实现调用内置工具链里的 git 原生二进制。
-> 该工具链已随架构重构移除，且 WASM 沙箱内无法运行 git 二进制，因此本功能暂时下线。
-> UI 与接口完整保留，后续将以 **JGit（纯 Java 实现，无需外部二进制）**恢复，
-> 届时同样离线可用。当前点击会给出明确提示，不会崩溃。
+> **实现**：`GitManager` 基于 **JGit（纯 Java，随 APK 打包）**——init / status /
+> commit / push / pull 全部在应用进程内完成，无需任何外部二进制，依旧离线。
+> 远程 URL 支持 `https://user:token@host/repo.git` 内嵌凭据；结果回显只显示主机名，不回显 token。
 
-原能力（供恢复时参考）：
+能力：
 
-- 状态：分支名、变更文件列表（`--porcelain`）、最近提交
-- 动作：初始化（main）、全部暂存并提交、推送、拉取
-- 配置：Git 身份与远程 URL（token 可内嵌，不落盘）
+- 状态：分支名、ahead/behind、变更文件列表、最近提交
+- 动作：初始化（main）、全部暂存并提交（含删除）、推送、拉取（自动合并）
+- 配置：Git 身份与远程 URL（token 可内嵌）
 - 报错翻译：`403`→检查令牌、`non-fast-forward`→先拉取再推送、`who are you`→填身份
 
 ### 22. AI 助手（可选，**在线服务**）
@@ -449,10 +449,13 @@ Java 文件仍可打开编辑与高亮，但点运行会提示「Java 运行暂�
 | M11 | 2026 全家桶：命令面板 ⌘K / ~~Git 面板~~ / AI 助手（BYOK）/ 全局搜索 / 代码片段 | ⚠️ |
 | M12 | **真实构建出 APK**：国内镜像全链路（腾讯 SDK + 阿里云 Maven）+ 内置 13MB Pyodide 运行时 + 18 语言语法，沙盒内 assembleDebug 成功 | ✅ |
 | M13 | **架构重构**：执行引擎换为 Pyodide（WASM），彻底移除 441MB 外置工具链依赖，真正做到装完即离线 | ✅ |
+| M14 | **数据科学栈**：numpy / pandas 官方 wheel 随 APK 分发，`import` 即用零网络（v0.7.0） | ✅ |
+| M15 | **Git 回归**：JGit（纯 Java）驱动 Git 面板全功能，依旧离线（v0.7.0） | ✅ |
 
 ## 已知限制
 
-- **APK 体积**：v0.6.0 debug 包实测 **31MB**（含 13MB Pyodide 运行时 + 18 种语言语法资源），
+- **APK 体积**：v0.7.0 debug 包实测 **43MB**（13MB Pyodide 运行时 + 37MB numpy/pandas
+  wheel 在包内压缩后约 11MB 增量 + JGit/语法资源），
   装完即用、无需任何下载。不适合走 Google Play（前台服务 specialUse 声明繁琐），
   建议 F-Droid / GitCode Releases / 官网直下。
 - **Java 执行不可用**：JVM 无法运行于 WebAssembly 沙箱。编辑与语法高亮正常保留。
@@ -481,7 +484,7 @@ Java 文件仍可打开编辑与高亮，但点运行会提示「Java 运行暂�
 
 ## 镜像构建指南（无 Android SDK 也能出包）
 
-本项目已在 **无 Android SDK 的纯 Linux 沙盒** 内真实构建出 APK（v0.6.0，31MB）。
+本项目已在 **无 Android SDK 的纯 Linux 沙盒** 内真实构建出 APK（v0.7.0，43MB）。
 构建全程使用国内镜像，无需访问 Google 服务器：
 
 | 组件 | 镜像 |

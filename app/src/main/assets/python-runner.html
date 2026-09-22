@@ -140,17 +140,30 @@ async function run(msg) {
   ].join('\n');
 
   // ---- 超时看门狗：优先用中断缓冲（KeyboardInterrupt 取消，解释器保持温热）----
+  // 在用户代码开跑前才启动：依赖装载（首次可能解包 20MB+ 的 wheel）不应吃掉用户超时。
   const sec = timeout || 8;
   let killed = false;
-  const to = setTimeout(() => {
-    killed = true;
-    if (interruptBuffer) interruptBuffer[0] = 2; // SIGINT
-    postState('timeout', '执行超时，已请求中断');
-  }, sec * 1000);
+  let watchdog = null;
+  const armWatchdog = () => {
+    watchdog = setTimeout(() => {
+      killed = true;
+      if (interruptBuffer) interruptBuffer[0] = 2; // SIGINT
+      postState('timeout', '执行超时，已请求中断');
+    }, sec * 1000);
+  };
 
   let exitCode = 0;
   try {
     await pyodide.runPythonAsync(setup);
+    // 按代码里的 import 自动装载预打包库（numpy/pandas 及其依赖）。
+    // wheel 全部内置在 APK 的 indexURL 同目录下，零网络；装载失败不拦截，
+    // 交给用户代码报出真实错误（例如 import 名与内置包不一致时）。
+    try {
+      await pyodide.loadPackagesFromImports(code);
+    } catch (err) {
+      postOut('内置依赖装载提示：' + String(err), 'stderr');
+    }
+    armWatchdog();
     await pyodide.runPythonAsync(code, { filename: mainFile || '<exec>' });
   } catch (err) {
     exitCode = 1;
@@ -161,7 +174,7 @@ async function run(msg) {
     }
     for (const ln of tb.split('\n')) postOut(ln, 'stderr');
   } finally {
-    clearTimeout(to);
+    if (watchdog) clearTimeout(watchdog);
     if (interruptBuffer) interruptBuffer[0] = 0; // 复位，避免影响下一次运行
   }
 

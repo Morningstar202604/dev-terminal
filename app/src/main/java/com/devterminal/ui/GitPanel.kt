@@ -43,8 +43,8 @@ import com.devterminal.ui.theme.muted
 /**
  * Git 面板：仓库状态 / 提交 / 推送 / 拉取，对标 Spck 的 Git 工作流。
  *
- * 状态刷新、init、commit、push、pull 全部调用内置 git 二进制（离线可用）；
- * 远程仓库凭据走 URL 内嵌 token（用户在配置区填写）。
+ * 状态刷新、init、commit、push、pull 全部走 JGit（纯 Java 实现，随 APK 打包，
+ * 无外部二进制依赖，依旧离线）；远程凭据走 URL 内嵌 token（用户在配置区填写）。
  *
  * 视觉重构：变更列表不再一行行堆 primary 色文本，改为等宽灰阶 + 状态色点；
  * 主按钮收敛为一个「提交」，推送/拉取降级为无背景的文字动作。

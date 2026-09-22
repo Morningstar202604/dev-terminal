@@ -124,7 +124,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     /** 当前项目根目录（默认取第一个项目） */
     private var currentProject: File? = null
 
-    private val git = GitManager(installer)
+    private val git = GitManager()
 
     init {
         prepareEnvironment()

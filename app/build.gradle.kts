@@ -14,8 +14,8 @@ android {
         applicationId = "com.devterminal"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 7
-        versionName = "0.6.0"
+        versionCode = 8
+        versionName = "0.7.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -85,6 +85,10 @@ dependencies {
 
     // ===== WebView 本地资源加载：Pyodide 运行器以此加载 APK 内 assets =====
     implementation(libs.androidx.webkit)
+
+    // ===== Git：JGit（纯 Java，恢复完整 Git 能力，同样离线） =====
+    implementation(libs.jgit)
+    implementation(libs.slf4j.nop)
 
     // 单元测试：纯 JVM 逻辑（如报错行解析）不依赖 Android 框架，可直接跑
     testImplementation(libs.junit)

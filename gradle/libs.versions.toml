@@ -18,6 +18,10 @@ lifecycle = "2.8.7"
 composeBom = "2024.12.01"
 soraEditor = "0.23.6"
 androidxWebkit = "1.12.1"
+# JGit：纯 Java 的 Git 实现，随 APK 打包即可离线做 init/commit/push/pull。
+# 选 6.x（Java 11 字节码）而非 7.x（Java 17）：Android D8 兼容面更稳。
+jgit = "6.10.1.202505221210-r"
+slf4jNop = "2.0.13"
 
 [libraries]
 # --- Compose（版本由 BOM 统一约束）---
@@ -36,6 +40,11 @@ androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lif
 
 # --- WebView 本地资源加载（Pyodide 运行器以 https 域加载 APK 内 assets）---
 androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "androidxWebkit" }
+
+# --- Git：JGit (EDL-1.0/BSD-3，纯 Java，无外部二进制依赖) ---
+jgit = { group = "org.eclipse.jgit", name = "org.eclipse.jgit", version.ref = "jgit" }
+# 静默 JGit 的日志门面（Android 上无 SLF4J 绑定时会往 logcat 刷警告）
+slf4j-nop = { group = "org.slf4j", name = "slf4j-nop", version.ref = "slf4jNop" }
 
 # --- 代码编辑器：SoraEditor (LGPL-2.1) ---
 # 若产品闭源，需保证用户可替换该库（动态链接 + 提供目标文件）。

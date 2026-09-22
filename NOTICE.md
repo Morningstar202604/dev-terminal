@@ -24,7 +24,24 @@
   若你分发 APK，请保留本声明，并在 App 内提供「开源许可」入口（建议）。
 - 说明：Python 由 WebAssembly 沙箱执行，**不包含** Termux 或任何原生 Linux 用户空间二进制。
 
-## 3. AndroidX / Jetpack Compose / Kotlin / androidx.webkit
+## 3. 预打包 Python 库（numpy / pandas 及其依赖）
+
+- 组件与许可证：**numpy（BSD-3）**、**pandas（BSD-3）**、
+  python-dateutil（Apache-2.0 / PSF 双许可）、pytz（MIT）、six（MIT）。
+- 使用方式：官方 Pyodide 发行版的预编译 wheel（含 wasm32 二进制），位于
+  `app/src/main/assets/pyodide/`，随 APK 分发；运行时按用户代码的 import
+  自动装载（`loadPackagesFromImports`），全程零网络。
+- 合规说明：wheel 以**未修改的原始形式**（sha256 与 Pyodide 0.26.4 lock 完全一致）再分发。
+
+## 4. JGit（Git 实现，纯 Java）
+
+- 项目地址：https://www.eclipse.org/jgit/
+- 许可证：**EDL 1.0**（Eclipse Distribution License，即 BSD-3-Clause）。
+- 使用方式：通过 Maven（`org.eclipse.jgit:org.eclipse.jgit`）以公开 API 动态链接，
+  提供 init / status / commit / push / pull 能力，无外部二进制依赖。
+- 附带组件：SLF4J（`slf4j-api` / `slf4j-nop`，MIT）。
+
+## 5. AndroidX / Jetpack Compose / Kotlin / androidx.webkit
 
 - 许可证：Apache-2.0
 - 通过 Maven Central 分发的官方 Android 组件。

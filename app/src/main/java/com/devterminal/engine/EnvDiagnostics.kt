@@ -66,8 +66,13 @@ object EnvDiagnostics {
             }
         }
 
-        // 2) 能力说明（诚实标注：Python 可用，Java 在 WASM 下不可用）
+        // 2) 能力说明（诚实标注：Python/Git 可用，Java 在 WASM 下不可用）
         tools += ToolStatus("Python 执行", true, "Pyodide（WebAssembly）· 完全离线")
+        tools += ToolStatus(
+            "数据科学库", true,
+            "numpy / pandas 内置 wheel · 按代码 import 自动装载（零网络）"
+        )
+        tools += ToolStatus("Git 操作", true, "JGit（纯 Java）· 完全离线")
         tools += ToolStatus(
             "Java 执行", false,
             "不可用：JVM 无法运行于 WebAssembly 沙箱（仅保留编辑与高亮）"

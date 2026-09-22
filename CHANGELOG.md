@@ -2,6 +2,38 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.7.0] — 2026-09-22
+
+### 新增
+- **数据科学栈离线内置**：随 APK 打包 numpy 1.26.4 / pandas 2.2.0 官方 Pyodide wheel
+  （含 python-dateutil / pytz / six，共约 37MB，sha256 与 lock 完全一致）。
+  运行器在执行用户代码前用 `loadPackagesFromImports` 按 import 自动装载——
+  写 `import pandas` 即用，全程零网络；看门狗在装载完成后才启动，不侵占用户超时。
+  > 端到端验证：无头 Chromium（与 Android WebView 同内核）实测本地装载 0.7s，
+  > DataFrame 统计与 numpy 线性代数结果正确。
+- **Git 能力回归（JGit）**：引入 `org.eclipse.jgit`（纯 Java，EDL-1.0），
+  重写 `GitManager`：init（main 分支）/ status（分支、变更、ahead/behind、最近提交）/
+  commitAll / push / pull 全部在应用进程内完成，依旧离线；远程 URL 支持内嵌 token，
+  结果回显只显示主机名，**不回显 token**。UI 层零改动。
+- 环境自检补齐「数据科学库」「Git 操作」两项能力标注。
+
+### 修复
+- **AI「已配置」判定恒为真**：`aiConfigured` 原为「端点非空」，而默认值是占位的
+  本机 Ollama 地址（恒非空），导致「未配置」引导永不出现、AI 动作直接发请求必败。
+  改为显式持久化标志（`KEY_AI_CONFIGURED`），仅在设置页点「保存 AI 配置」时置真；
+  未配置时 AI 面板禁用输入与「发送」，占位文案给出引导。
+- 关于页过时文案：删除「内置 Python / Java 工具链」「Termux packages」，
+  改为 Pyodide / CPython 实况，许可列表同步更新。
+
+### 变更
+- 版本号 0.7.0（versionCode 8）；APK 体积约 32MB → 约 44MB
+  （37MB wheel 在 APK 内压缩后约 11MB 增量 + JGit 约 1MB）。
+
+### 测试
+- 新增 `GitManagerTest`（6 例，纯 JVM）：真实建仓 / 提交 / 状态读取；
+  顺带修出真 bug——刚 init 未提交时 `log()` 抛 NoHeadException 导致 status 误报
+  「不是仓库」。全部 23 例通过。
+
 ## [0.6.0] — 2026-09-22
 
 ### 重构（核心：把「离线」从宣传变成事实）
