@@ -84,7 +84,7 @@ fun GitPanelDialog(
                 StatusDot(cs.error)
                 Spacer(Modifier.size(Dimens.sm))
                 Text(
-                    "工具链里没有 git 二进制，请重新生成 usrtar.zip（确保 usr/bin/git 存在）",
+                    "Git 暂不可用：本版运行于 WebAssembly 架构，沙箱内无法运行 git 二进制；后续将通过 JGit（纯 Java）恢复。",
                     style = MaterialTheme.typography.bodySmall,
                     color = cs.error,
                     modifier = Modifier.weight(1f)

@@ -13,7 +13,7 @@ import com.devterminal.engine.GitManager
 import com.devterminal.engine.Language
 import com.devterminal.engine.RunEvent
 import com.devterminal.engine.RunRequest
-import com.devterminal.engine.TermuxEngine
+import com.devterminal.engine.PyodideEngine
 import com.devterminal.project.FileNode
 import com.devterminal.project.ProjectManager
 import com.devterminal.project.Templates
@@ -109,7 +109,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     private val context = app.applicationContext
     private val installer = EnvironmentInstaller(context)
-    private val engine = TermuxEngine(context)
+
+    /**
+     * 真离线执行引擎：内置 Pyodide（WebAssembly 版 CPython），随 APK 打包、装完即离线。
+     * 替代了旧的原生 Termux 工具链方案（依赖 441MB 外置包，与「离线」定位矛盾）。
+     */
+    private val engine = PyodideEngine(context)
     private val projects = ProjectManager(installer)
     private val settingsStore = com.devterminal.settings.SettingsStore(context)
 
@@ -127,51 +132,39 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun prepareEnvironment() {
         viewModelScope.launch {
-            // 解压离线工具链可能耗时，放到 IO 线程并更新进度
+            // Pyodide 运行时随 APK 打包，无需解压/下载；这里只做目录初始化与解释器预热。
             val ok = withContext(Dispatchers.IO) {
-                runCatching {
-                    installer.ensureDirs()
-                    engine.prepareEnvironment { done, total ->
-                        val pct = if (total > 0) (done * 100 / total).toInt() else 0
-                        _ui.update { it.copy(
-                            envMessage = "正在解压离线工具链… $pct%",
-                            installProgress = if (total > 0) done.toFloat() / total else -1f
-                        ) }
-                    }
-                }.isSuccess
+                runCatching { installer.ensureDirs() }.isSuccess
             }
             if (!ok) {
                 _ui.update { it.copy(
                     envState = EnvState.ERROR,
-                    envMessage = "离线工具链解压失败",
-                    message = "请检查 assets/usrtar.zip 是否已打包",
+                    envMessage = "工作目录初始化失败",
+                    message = "无法创建应用私有目录",
                     messageSeq = it.messageSeq + 1
                 ) }
                 return@launch
             }
-            // git 是否存在只与工具链有关，环境就绪后探一次即可
+
+            // 预热：让 WebView 后台加载 9MB WASM，用户点「运行」时无需干等
+            engine.warmup()
+
+            // 环境自检：报告当前能力（Python 可用、Java 暂不可用）
             val hasGit = withContext(Dispatchers.IO) { git.isGitInstalled() }
-            if (engine.isEnvironmentReady) {
-                _ui.update { it.copy(
-                    envState = EnvState.READY,
-                    envMessage = "离线环境就绪",
-                    installProgress = -1f,
-                    gitInstalled = hasGit,
-                    output = listOf("[DevTerminal] 离线运行环境已就绪，全程无需联网。")
-                ) }
-                restoreSession()
-                // 后台跑一次自检，不阻塞用户开始写代码
-                runDiagnostics()
-            } else {
-                _ui.update { it.copy(
-                    envState = EnvState.ERROR,
-                    envMessage = "未找到内置工具链",
-                    installProgress = -1f,
-                    gitInstalled = hasGit,
-                    message = "缺少 assets/usrtar.zip，请先按 README 生成离线工具链",
-                    messageSeq = it.messageSeq + 1
-                ) }
-            }
+            _ui.update { it.copy(
+                envState = EnvState.READY,
+                envMessage = "离线环境就绪（Python · Pyodide/WASM）",
+                installProgress = -1f,
+                gitInstalled = hasGit,
+                output = listOf(
+                    "[DevTerminal] 离线运行环境已就绪，全程无需联网。",
+                    "[DevTerminal] Python 由内置 Pyodide（WebAssembly）执行，随 APK 打包。",
+                    "[DevTerminal] 说明：JVM 无法运行于 WASM 沙箱，Java 暂仅支持编辑与语法高亮。"
+                )
+            ) }
+            restoreSession()
+            // 后台跑一次自检，不阻塞用户开始写代码
+            runDiagnostics()
         }
     }
 
@@ -189,7 +182,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     /** 后台执行环境自检并把结果推给 UI */
     fun runDiagnostics() {
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { EnvDiagnostics.run(installer) }
+            val result = withContext(Dispatchers.IO) { EnvDiagnostics.run(context) }
             _ui.update { it.copy(
                 diagnostics = result,
                 message = result.summary() + "（" + EnvDiagnostics.formatSize(result.installedSizeBytes) + "）",

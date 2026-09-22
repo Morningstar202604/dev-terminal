@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>DevTerminal Python Runner</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #1e1f22; }
+</style>
+</head>
+<body>
+<script type="module">
+// DevTerminal 离线 Python 运行器（WebView 主线程版）
+//
+// 为什么不用 Web Worker：Android WebView 里 Worker + WASM + 模块脚本在部分
+// 机型上加载不稳定，且 SharedArrayBuffer 需要 COOP/COEP 跨源隔离头，
+// file:// 与 WebViewAssetLoader 下拿不到。改为在主线程跑，用 Pyodide 的
+// setInterruptBuffer 做超时中断（无 SAB 时降级为看门狗 + 强制重载）。
+import { loadPyodide } from './pyodide/pyodide.mjs';
+
+let pyodide = null;
+let interruptBuffer = null;
+let loading = null;
+let running = false;
+
+// ---- 与 Android 层的桥 ----
+function bridge(name, payload) {
+  try {
+    if (window.DevTerminal && typeof window.DevTerminal[name] === 'function') {
+      window.DevTerminal[name](payload || '');
+    }
+  } catch (_) { /* 桥未就绪时静默 */ }
+}
+const postOut   = (text, stream) => bridge('onOutput', JSON.stringify({ text, stream }));
+const postState = (state, msg)  => bridge('onState',  JSON.stringify({ state, msg: msg || '' }));
+
+// 清洗 Pyodide 注入的内部栈帧，否则会混进 traceback 并被「点击跳行」误判
+function cleanTraceback(tb) {
+  return tb.split('\n').filter((line) => {
+    if (/_pyodide/.test(line)) return false;
+    if (/python3\d+\.zip/.test(line)) return false;
+    if (/^\s*await CodeRunner\(/.test(line)) return false;
+    if (/^\s*coroutine = eval/.test(line)) return false;
+    if (/^\s*\^+/.test(line)) return false;
+    return true;
+  }).join('\n');
+}
+
+async function ensure() {
+  if (pyodide) return pyodide;
+  if (loading) return loading;
+  loading = (async () => {
+    postState('loading', '正在加载离线 Python 解释器…');
+    // indexURL 指向同目录下的 pyodide/，资源全部来自 APK assets，零网络
+    pyodide = await loadPyodide({ indexURL: './pyodide/' });
+    if (typeof SharedArrayBuffer !== 'undefined') {
+      interruptBuffer = new Int32Array(new SharedArrayBuffer(4));
+      pyodide.setInterruptBuffer(interruptBuffer);
+    }
+    postState('ready', '离线解释器就绪');
+    return pyodide;
+  })();
+  try { return await loading; }
+  finally { loading = null; }
+}
+
+/**
+ * 运行一段 Python。
+ * msg: { code, files:{name:content}, inputs:[...], mainFile, timeout }
+ */
+async function run(msg) {
+  if (running) { postOut('⚠ 已有程序在运行中，请先停止', 'stderr'); return; }
+  running = true;
+
+  try {
+    await ensure();
+  } catch (err) {
+    postOut('离线解释器加载失败：' + String(err), 'stderr');
+    postState('failed', '解释器加载失败');
+    running = false;
+    bridge('onFinish', JSON.stringify({ exitCode: 1, durationMs: 0 }));
+    return;
+  }
+
+  const { code, files, inputs, mainFile, timeout } = msg;
+  const started = Date.now();
+
+  // ---- 写入真实文件到虚拟 FS，保证 import 能解析 ----
+  try { pyodide.FS.mkdir('/workspace'); } catch (_) {}
+  pyodide.FS.chdir('/workspace');
+  for (const name of Object.keys(files || {})) {
+    try { pyodide.FS.unlink('/workspace/' + name); } catch (_) {}
+  }
+  for (const name of Object.keys(files || {})) {
+    try { pyodide.FS.writeFile('/workspace/' + name, files[name]); }
+    catch (err) { postOut('写入 ' + name + ' 失败：' + String(err), 'stderr'); }
+  }
+
+  // ---- 逐字节捕获 stdout/stderr，流式 UTF-8 解码（中文/emoji 不会被拆乱码）----
+  const td = { stdout: new TextDecoder('utf-8'), stderr: new TextDecoder('utf-8') };
+  const pending = { stdout: '', stderr: '' };
+  const raw = (stream) => (charCode) => {
+    pending[stream] += td[stream].decode(new Uint8Array([charCode & 0xff]), { stream: true });
+    let idx;
+    while ((idx = pending[stream].indexOf('\n')) >= 0) {
+      postOut(pending[stream].slice(0, idx), stream);
+      pending[stream] = pending[stream].slice(idx + 1);
+    }
+  };
+  pyodide.setStdout({ raw: raw('stdout') });
+  pyodide.setStderr({ raw: raw('stderr') });
+
+  // ---- setup 与用户代码分两次执行，避免报错行号偏移导致跳行跳错 ----
+  // input() 实现：先取预喂队列；队列空则标记「等待输入」并阻塞，
+  // 由 Kotlin 侧的 pushInput() 追加后唤醒。这样交互式程序也能真正边跑边输入。
+  const setup = [
+    'import builtins, sys, os, time',
+    'sys.path.insert(0, os.getcwd())',
+    '__IQ__ = list(' + JSON.stringify(inputs || []) + ')',
+    '__WAITING__ = False',
+    'def __dt_input__(prompt=""):',
+    '    global __WAITING__',
+    '    if prompt:',
+    '        sys.stdout.write(str(prompt)); sys.stdout.flush()',
+    '    if __IQ__:',
+    '        return __IQ__.pop(0)',
+    '    # 队列为空：标记等待中，阻塞轮询直到有新输入或超时中止',
+    '    __WAITING__ = True',
+    '    import time as _t',
+    '    _deadline = _t.time() + 120',
+    '    while not __IQ__:',
+    '        if _t.time() > _deadline:',
+    '            __WAITING__ = False',
+    '            raise EOFError("等待输入超时（120s）")',
+    '        _t.sleep(0.05)',
+    '    __WAITING__ = False',
+    '    return __IQ__.pop(0)',
+    'builtins.input = __dt_input__',
+    ''
+  ].join('\n');
+
+  // ---- 超时看门狗：优先用中断缓冲（KeyboardInterrupt 取消，解释器保持温热）----
+  const sec = timeout || 8;
+  let killed = false;
+  const to = setTimeout(() => {
+    killed = true;
+    if (interruptBuffer) interruptBuffer[0] = 2; // SIGINT
+    postState('timeout', '执行超时，已请求中断');
+  }, sec * 1000);
+
+  let exitCode = 0;
+  try {
+    await pyodide.runPythonAsync(setup);
+    await pyodide.runPythonAsync(code, { filename: mainFile || '<exec>' });
+  } catch (err) {
+    exitCode = 1;
+    const rawMsg = (err && err.message) ? err.message : String(err);
+    const tb = cleanTraceback(rawMsg);
+    if (killed && /KeyboardInterrupt/.test(rawMsg)) {
+      postOut('⏱ 已超时取消（' + sec + 's）：死循环被安全终止，应用未卡死', 'stderr');
+    }
+    for (const ln of tb.split('\n')) postOut(ln, 'stderr');
+  } finally {
+    clearTimeout(to);
+    if (interruptBuffer) interruptBuffer[0] = 0; // 复位，避免影响下一次运行
+  }
+
+  if (pending.stdout) postOut(pending.stdout, 'stdout');
+  if (pending.stderr) postOut(pending.stderr, 'stderr');
+
+  running = false;
+  postState('done', '');
+  bridge('onFinish', JSON.stringify({ exitCode, durationMs: Date.now() - started }));
+}
+
+// ---- Android 侧调用入口 ----
+window.DevTerminalBridge = {
+  // 预加载解释器（首次进入编辑器时后台预热，用户点运行时不必干等）
+  warmup() { ensure().catch((e) => postOut('预热失败：' + String(e), 'stderr')); },
+  run(json) {
+    let msg;
+    try { msg = JSON.parse(json); }
+    catch (e) { postOut('运行参数解析失败：' + String(e), 'stderr'); return; }
+    run(msg);
+  },
+  stop() {
+    if (interruptBuffer) interruptBuffer[0] = 2; // 触发 KeyboardInterrupt
+  },
+  /**
+   * 运行中追加一行输入，唤醒阻塞在 input() 上的程序。
+   * 通过写入 input 队列 __IQ__ 实现：清空 EOF 标志并推入新值。
+   */
+  pushInput(text) {
+    try {
+      if (!pyodide) return;
+      const v = JSON.stringify(String(text));
+      pyodide.runPython(`__IQ__.append(${v})`);
+    } catch (e) {
+      postOut('输入写入失败：' + String(e), 'stderr');
+    }
+  }
+};
+
+postState('booted', '');
+</script>
+</body>
+</html>

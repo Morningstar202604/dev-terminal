@@ -2,6 +2,39 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.6.0] — 2026-09-22
+
+### 重构（核心：把「离线」从宣传变成事实）
+- **执行引擎整体替换为 Pyodide（WebAssembly）**：新增 `PyodideEngine.kt`，
+  以内嵌 WebView + `WebViewAssetLoader` 承载 WASM 版 CPython，
+  运行时（`pyodide.asm.wasm` + `python_stdlib.zip`，约 13MB）随 APK 打包，**装完即离线**。
+- **删除旧的原生工具链方案**：移除 `TermuxEngine.kt` 与 `EnvironmentInstaller` 中
+  的 `usrtar.zip` 解压逻辑、Termux 环境变量模拟等全部死代码。
+  > 旧方案要求一个 441MB 的 `assets/usrtar.zip`，该文件不入库、必须联网下载，
+  > 导致 clone 源码构建出的 APK 根本跑不了代码——「离线」名不副实。
+- **新增运行器页面** `app/src/main/assets/python-runner.html`：
+  移植自 `design/pyworker.js` 的成熟逻辑（流式 UTF-8 解码、traceback 内部帧清洗、
+  setup 与用户代码分离以避免行号偏移、中断缓冲超时）。
+
+### 新增
+- **`input()` 运行中交互**：JS 侧输入队列 + `pushInput` 桥，程序阻塞在 `input()` 时
+  可被 Kotlin 侧实时唤醒，不再是"仅支持预喂"。
+- **环境自检改为校验运行时完整性**：`EnvDiagnostics` 现在逐个检查 APK 内
+  Pyodide 资源是否齐备，并明确标注各项能力（Python 可用 / Java 不可用）。
+- **构建约束固化**：`build.gradle.kts` 增加 `noCompress += listOf("wasm", "zip")`，
+  避免 AAPT 压缩导致 WebView 无法加载 WASM；新增 `androidx.webkit` 依赖。
+
+### 变更（能力边界，诚实标注）
+- **Java 执行下线**：JVM 无法运行于 WebAssembly 沙箱。保留编辑与语法高亮，
+  运行时给出明确说明而非报错崩溃。
+- **Git 操作下线**：原依赖工具链内的 git 二进制。保留 UI 与接口，
+  后续可通过 JGit（纯 Java 实现）恢复。
+- README 全面校正：删除"Python + Java 全程零网络""本机 Ollama 离线 AI"
+  等与实现不符的宣称，新增「能力边界」章节。
+
+### 说明
+- Java 与 Git 的恢复属于后续独立阶段的工作，本轮聚焦「让 Python 真正离线可跑」。
+
 ## [0.5.0] — 2026-09-17
 
 ### 新增

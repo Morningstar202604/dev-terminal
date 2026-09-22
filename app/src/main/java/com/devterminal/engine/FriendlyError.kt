@@ -20,8 +20,8 @@ object FriendlyError {
                     append("缺少模块")
                     if (mod != null) append("「$mod」") else append("")
                     append("。\n")
-                    append("离线环境只会带上预装库；要在手机上装新库，需要先把它打进\n")
-                    append("assets/usrtar.zip（真机 Termux 里 pip install 后再导出）。")
+                    append("离线环境只带 Python 标准库（Pyodide 内置）。要用第三方库，\n")
+                    append("需随 APK 打包对应的 Pyodide wheel，或改用带该库的构建。")
                 }
             }
 

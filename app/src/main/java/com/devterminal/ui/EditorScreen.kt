@@ -846,7 +846,7 @@ private fun MissingToolchainScreen(
             Text(message, style = MaterialTheme.typography.titleMedium, color = cs.error)
             Spacer(Modifier.height(Dimens.md))
             Text(
-                "DevTerminal 完全离线运行，因此 Python / Java 工具链必须提前打进 APK。",
+                "DevTerminal 的 Python 运行时（Pyodide / WebAssembly）随 APK 打包，装完即离线、无需任何下载。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = cs.muted
             )
@@ -854,10 +854,9 @@ private fun MissingToolchainScreen(
             SectionLabel("修复步骤")
             Spacer(Modifier.height(Dimens.sm))
             listOf(
-                "1. 在手机 Termux 里执行 tools/extract_bootstrap.sh",
-                "2. 把生成的 usrtar.zip 拷到开发机",
-                "3. 放到 app/src/main/assets/usrtar.zip",
-                "4. 重新构建并安装 APK"
+                "1. 确认构建时 assets/pyodide/ 已随 APK 打包",
+                "2. 确认 build.gradle.kts 已配置 noCompress += [\"wasm\", \"zip\"]",
+                "3. 重新构建并安装 APK"
             ).forEach { step ->
                 MonoText(
                     step,

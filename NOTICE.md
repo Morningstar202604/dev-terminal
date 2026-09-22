@@ -12,17 +12,19 @@
   用户可自行替换该库。若你 fork 本项目后闭源分发，请保证最终用户能获得
   或替换该库，并保留本声明。
 
-## 2. 内置离线工具链（usrtar.zip，构建时自行生成）
+## 2. Pyodide（Python 运行时，WebAssembly）
 
-- 来源：基于 [Termux](https://github.com/termux/termux-packages) 生态的预编译二进制
-  （Python / OpenJDK / Git 等，不含 Termux App 代码）。
-- 许可证：各组件各自的开源许可证（Python PSF、OpenJDK GPLv2+Classpath、
-  Git GPLv2、OpenSSL Apache-2.0 等）。
-- 合规说明：`usrtar.zip` 不在本仓库中分发，由使用者按 `tools/` 下脚本自行构建；
-  若你分发含工具链的 APK，请随包附上相应许可证文本（建议在 App 内提供
-  「开源许可」页面）。
+- 项目地址：https://github.com/pyodide/pyodide
+- 许可证：**MPL-2.0**（Pyodide 自身）；其内置的 CPython 为 **PSF License**，
+  标准库与预编译包各自遵循上游许可证。
+- 使用方式：运行时资源（`pyodide.asm.wasm`、`python_stdlib.zip`、`pyodide.mjs` 等，
+  约 13MB）随本仓库提供，位于 `app/src/main/assets/pyodide/`，由 AAPT 打进 APK。
+- 合规说明：Pyodide 以 MPL-2.0 分发，本项目的源码形态已随仓库完整提供；
+  Pyodide 及其捆绑组件以**未修改的原始形式**再分发。
+  若你分发 APK，请保留本声明，并在 App 内提供「开源许可」入口（建议）。
+- 说明：Python 由 WebAssembly 沙箱执行，**不包含** Termux 或任何原生 Linux 用户空间二进制。
 
-## 3. AndroidX / Jetpack Compose / Kotlin
+## 3. AndroidX / Jetpack Compose / Kotlin / androidx.webkit
 
 - 许可证：Apache-2.0
 - 通过 Maven Central 分发的官方 Android 组件。

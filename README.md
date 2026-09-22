@@ -1,7 +1,7 @@
 <h1 align="center">📱 DevTerminal</h1>
 
 <p align="center">
-  <b>完全离线的安卓编程终端 — 手机上的现代 IDE。<br>写、跑、调试 Python 与 Java，全程零网络。</b>
+  <b>真正离线的安卓 Python 终端 — 手机上的现代 IDE。<br>运行时随 APK 打包，装完即离线，零下载、零网络。</b>
 </p>
 
 <p align="center">
@@ -24,7 +24,15 @@
 
 <p align="center"><b>🌐 官网</b>（GitHub Pages 双号部署，内容一致）：<a href="https://x33834.github.io/dev-terminal/">x33834.github.io/dev-terminal</a> · <a href="https://morningstar202604.github.io/dev-terminal/">morningstar202604.github.io/dev-terminal</a></p>
 
-**一个完全离线的安卓编程终端**：在手机上直接写、跑、调试 Python（首版）与 Java，界面是现代 IDE，而不是命令行的黑框。
+**一个真正离线的安卓编程终端**：Python 运行时（Pyodide / WebAssembly，约 13MB）随 APK 打包，
+安装后无需任何下载即可写、跑、调试代码，界面是现代 IDE 而不是命令行黑框。
+
+> **本版重构说明（v0.6）**
+> 此前版本依赖一个 441MB 的原生 Termux 工具链，它不入库、必须联网下载，
+> 导致「离线」名不副实——clone 源码构建出的 APK 根本跑不了代码。
+> 本版彻底换为 **Pyodide（WASM 版 CPython）**，运行时随包分发，**装完即离线**。
+> 代价是 JVM 无法在 WASM 沙箱内运行，**Java 执行暂不可用**（保留编辑与语法高亮），
+> Git 功能同理暂时下线。详见文末「能力边界」。
 
 ![原型预览](design/preview.png)
 
@@ -35,24 +43,40 @@
 | 功能 | Termux | Pydroid 3 | Acode | Spck | **DevTerminal** |
 |---|---|---|---|---|---|
 | 现代 IDE 界面 | ❌ 命令行 | ⚠️ 较旧 | ✅ | ✅ | ✅ |
-| 多语言 | ✅ | ❌ 仅 Python | ✅ | ⚠️ Web 为主 | ✅ Python + Java |
-| 完全离线运行 | ⚠️ 装包要联网 | ⚠️ 部分离线 | ⚠️ | ❌ | ✅ **零网络** |
+| 多语言 | ✅ | ❌ 仅 Python | ✅ | ⚠️ Web 为主 | ⚠️ Python（编辑器支持多语言高亮） |
+| 完全离线运行 | ⚠️ 装包要联网 | ⚠️ 部分离线 | ⚠️ | ❌ | ✅ **运行时随包，零网络** |
 | 快捷符号栏 | ❌ | ✅ | ✅ | ✅ | ✅ 26 键 + Tab/退格 |
 | 多文件 Tab | — | ✅ | ✅ | ✅ | ✅ |
 | 查找/替换 | grep | ✅ | ✅ 正则 | ✅ | ✅ 计数跳转 |
 | 全局搜索 | — | ❌ | ✅ | ✅ | ✅ |
-| Git 集成 | ✅ | ❌ | ✅ | ✅ | ✅ 状态/提交/推送 |
-| AI 助手 | ❌ | ❌ | ✅ 云端 | ✅ 云端 | ✅ **本机 Ollama（离线）** |
+| Git 集成 | ✅ | ❌ | ✅ | ✅ | ⚠️ 暂不可用（见能力边界） |
+| AI 助手 | ❌ | ❌ | ✅ 云端 | ✅ 云端 | ⚠️ 需自配 OpenAI 兼容端点 |
 | 双指缩放字号 | — | ✅ | ✅ | ✅ | ✅ |
 | 输出分享 | ✅ | ✅ | ⚠️ | ✅ | ✅ |
 | 开源 | ✅ GPLv3 | ❌ | ✅ MIT | ⚠️ 部分 | ✅ Apache-2.0 |
 | 价格 | 免费 | 免费+广告 | 免费+广告 | 免费+内购 | **免费无广告** |
 
 > 对标来源：各应用 Google Play / F-Droid 页面与其官方文档（2026-09 状态）。
-> 我们的优势组合：**开源 + 无广告 + 完全离线运行 + 本机 AI**；差距项见下方 Roadmap。
+> 我们的优势组合：**开源 + 无广告 + 装完即离线（运行时随 APK）**；差距项见下方 Roadmap 与能力边界。
+
+### 能力边界（诚实标注）
+
+本版运行于 Pyodide（WebAssembly）架构，部分旧能力因此下线。这不是"待修 bug"，而是架构的固有约束：
+
+| 能力 | 状态 | 说明 |
+|---|---|---|
+| Python 运行 | ✅ 完整可用 | CPython 标准库全量，完全离线 |
+| 第三方库（numpy/pandas 等） | ⚠️ 未预装 | Pyodide 有预编译 wheel，但需随 APK 打包才能离线用 |
+| `input()` 交互 | ✅ 可用 | 输出面板下方输入行，运行中可实时喂入 |
+| 死循环保护 | ✅ 可用 | 超时通过 WASM 中断缓冲触发 KeyboardInterrupt |
+| **Java 运行** | ❌ 不可用 | **JVM 无法运行于 WASM 沙箱**，仅保留编辑与语法高亮 |
+| **Git 操作** | ❌ 暂不可用 | 原依赖 git 二进制；后续将接 JGit（纯 Java）恢复 |
+| 性能 | ⚠️ 约为原生的 1/10~1/50 | WASM 沙箱的固有代价，脚本/学习场景无感 |
 
 ### Roadmap（主动承认差距）
 
+- [ ] 预打包常用 Pyodide wheel（numpy / pandas），离线可直接 import
+- [ ] 以 JGit（纯 Java）恢复 Git 状态 / 提交 / 推送
 - [ ] 正则查找 / 大小写开关（Acode 已有）
 - [ ] 编辑器主题选择（当前仅 darcula，Spck 有多主题）
 - [ ] Markdown / HTML 实时预览（Spck 的核心卖点）
@@ -73,12 +97,18 @@
 ```
 Compose UI 层        文件树 / 代码编辑器 / 输出面板 / 运行栏
       │
-执行引擎层           TermuxEngine — 模拟 termux 环境变量，ProcessBuilder 起进程
-      │              实时流式回调 stdout/stderr，带超时保护
-离线工具链层         assets/usrtar.zip → 首次启动解压到 files/usr（零下载）
+执行引擎层           PyodideEngine — 内嵌 WebView 承载 Pyodide（WASM 版 CPython）
+      │              JavascriptInterface 双向通信，实时流式 stdout/stderr，带超时中断
+运行时资源层         assets/pyodide/ → 随 APK 打包，零下载、零网络
+                     pyodide.asm.wasm（解释器）+ python_stdlib.zip（标准库）
 ```
 
-**设计取舍**：不自造终端模拟器（那是 termux 十年工程），改用 `ProcessBuilder` 直接拉起内置解释器；环境变量完全模拟 termux 布局，因此内置的 termux 预编译二进制可在 bionic 上正常运行。
+**设计取舍**：不自造终端模拟器，也不依赖外置原生工具链。
+Python 由 **Pyodide（CPython 编译为 WebAssembly）** 执行 —— 它随 APK 打包，
+安装完成即具备完整离线运行能力。用 `WebViewAssetLoader` 以 https 域加载 assets，
+避开 `file://` 下 WASM 与 ES module 的跨源限制。
+
+**关键构建约束**：`.wasm` 与 `.zip` 必须配置 `noCompress`，否则 AAPT 再压缩后 WebView 无法加载。
 
 ## 目录结构
 
@@ -87,12 +117,12 @@ dev-terminal/
 ├── app/src/main/java/com/devterminal/
 │   ├── MainActivity.kt                入口
 │   ├── engine/
-│   │   ├── EnvironmentInstaller.kt    离线工具链解压 + termux 环境变量
-│   │   ├── EnvDiagnostics.kt          环境自检（真实探测每个工具）
+│   │   ├── PyodideEngine.kt           执行引擎（内嵌 WebView + WASM，真离线）
+│   │   ├── EnvironmentInstaller.kt    工作目录管理
+│   │   ├── EnvDiagnostics.kt          环境自检（校验 APK 内运行时资源完整性）
 │   │   ├── FriendlyError.kt           报错翻译成人话
 │   │   ├── CompletionProvider.kt      静态补全词表 + 文档符号提取
-│   │   ├── TermuxEngine.kt            执行引擎（流式输出 + stdin + Java 多文件编译）
-│   │   ├── GitManager.kt              Git 操作（内置 git，v0.3）
+│   │   ├── GitManager.kt              Git 操作（本版不可用，待接 JGit）
 │   │   ├── AiClient.kt                AI 客户端（OpenAI 兼容，v0.3）
 │   │   ├── Snippets.kt                代码片段库（v0.3）
 │   │   ├── ExecutionService.kt        前台服务保活（防 Android 12+ 杀进程）
@@ -120,11 +150,14 @@ dev-terminal/
 │       ├── GitPanel.kt                Git 面板（v0.3）
 │       ├── AiPanel.kt                 AI 助手面板（v0.3）
 │       └── theme/Theme.kt             Material 3 主题
+├── app/src/main/assets/pyodide/        内置 Python 运行时（WASM，随 APK 打包）
+├── app/src/main/assets/python-runner.html  运行器页面（Pyodide 加载 + 流式输出）
 ├── design/mockup.html                 高保真可交互原型（浏览器直接打开）
 ├── tools/
-│   ├── extract_bootstrap.sh           方式 A：真机 Termux 导出工具链
-│   ├── build_offline_bundle.sh        方式 B：CI 交叉编译
-│   └── selfcheck.py                   静态自检（无需 Android SDK）
+│   ├── sync_design_runtime.sh         把 App 的运行时同步给 design 原型
+│   ├── serve_design.py                本地起服务预览原型
+│   ├── selfcheck.py                   静态自检（无需 Android SDK）
+│   └── test_*.py                      端到端测试（Playwright）
 └── app/build.gradle.kts
 ```
 
@@ -169,12 +202,11 @@ Python 的 `input()`、`raw_input()` 等阻塞式读取都能正常交互。
 |---|---|
 | `ModuleNotFoundError: No module named 'numpy'` | 缺模块「numpy」+ 说明离线环境要预装 |
 | `IndentationError` | 缩进不一致，建议统一 4 空格 |
-| `EOFError` | 程序在等输入但读到 EOF，用底部输入行 |
-| `cannot find symbol` | Java 类名/方法名拼错或忘了 import |
-| `Could not find or load main class` | 确认有 `public static void main` |
-| `Exec format error` | 工具链 CPU 架构与本机不符 |
+| `EOFError` | 程序在等输入但读到 EOF，用底部输入行喂入 |
+| `KeyboardInterrupt` | 通常是超时保护触发了中断（死循环被安全终止） |
+| `ModuleNotFoundError` | 标准库以外的库需随 APK 打包对应 wheel |
 | `Killed` / `signal 9` | 被系统杀进程，去设电池无限制 |
-| `No space left` | 存储不足，建议用轻量工具链 |
+| `No space left` | 存储不足，清理项目目录 |
 
 ### 6. 运行配置
 
@@ -278,28 +310,33 @@ Compose 图标 import 完整性、package 与目录一致性、未使用的 impo
 ——所有功能一个输入框直达。移动端放不下 N 层菜单，「搜索式导航」是最省屏幕空间的
 交互（Cursor / VS Code 的核心范式）。
 
-### 21. Git 面板（v0.3）
+### 21. Git 面板（v0.3）— ⚠️ 本版暂不可用
 
-直接调用**内置工具链里的 git 二进制**（零额外依赖、离线可用）：
+> **状态说明**：原实现调用内置工具链里的 git 原生二进制。
+> 该工具链已随架构重构移除，且 WASM 沙箱内无法运行 git 二进制，因此本功能暂时下线。
+> UI 与接口完整保留，后续将以 **JGit（纯 Java 实现，无需外部二进制）**恢复，
+> 届时同样离线可用。当前点击会给出明确提示，不会崩溃。
+
+原能力（供恢复时参考）：
 
 - 状态：分支名、变更文件列表（`--porcelain`）、最近提交
 - 动作：初始化（main）、全部暂存并提交、推送、拉取
-- 配置：Git 身份与远程 URL（token 可内嵌，`-c` 参数注入不落盘）
+- 配置：Git 身份与远程 URL（token 可内嵌，不落盘）
 - 报错翻译：`403`→检查令牌、`non-fast-forward`→先拉取再推送、`who are you`→填身份
-
-对标 Spck 的 Git 工作流——在手机上完成「改代码 → commit → push」全流程。
 
 ### 22. AI 助手（v0.3，可选）
 
-**BYOK + 本地端点优先**——2026 年移动端 AI 编程的主流形态：
+**BYOK（自带密钥）**——AI 是可选功能，需要你自己提供端点：
 
-- 默认端点：本机 **Ollama**（`http://127.0.0.1:11434/v1`），本地推理 = **离线可用**
-- 兼容任何 OpenAI 协议端点（llama.cpp server / LM Studio / 云 API）
+- 兼容任何 **OpenAI 协议端点**（llama.cpp server / LM Studio / Ollama / 云 API）
 - 四个快捷动作：**解释此文件 / 修复运行错误 / 生成测试 / 加注释**
 - 「修复运行错误」会把最近一次运行的报错输出自动拼进上下文
 - 上下文自动携带当前文件（截断 3500 字符防 token 爆炸）
 
-> App 本体功能完全离线；AI 是可选功能，不配置端点就不发起任何网络请求。
+> ⚠ **注意**：默认端点为 `http://127.0.0.1:11434/v1`（本机 Ollama）。
+> 手机上通常没有可用的 Ollama 服务，**不配置端点就无法使用 AI 功能**。
+> 如需离线 AI，可在本机自行部署兼容端点后填入地址。
+> App 本体功能完全离线；不配置端点时不会发起任何网络请求。
 
 ### 23. 全局搜索（v0.3）
 
@@ -313,28 +350,36 @@ Java POJO / Stream / 正则等），从命令面板插入到光标处。
 
 ## UI 原型
 
-`design/mockup.html` 是一个**可直接双击打开**的高保真原型，用纯 HTML/CSS/JS 实现：
+`design/mockup.html` 是一个高保真原型，用纯 HTML/CSS/JS 实现：
 
 - 真机外框 + 模拟状态栏
 - 抽屉式文件树（可展开/折叠/切换文件）
 - 真实语法高亮的代码编辑器（Python + Java 两套词法分析）
 - 打字机效果的输出面板
 - 可交互的输入行（真的能玩猜数字）
-- 状态徽标变色、清空输出、保存提示
+
+**运行方式**（原型需要 Pyodide 运行时，但仓库只存一份，需先同步）：
+
+```bash
+bash tools/sync_design_runtime.sh   # 从 App assets 同步运行时到 design/
+python3 tools/serve_design.py       # 起本地服务，浏览器打开提示的地址
+```
+
+> 直接双击 `mockup.html` 无法运行 Python（`file://` 下 ES module 与 WASM 受限），
+> 必须通过本地 HTTP 服务访问。
 
 改 UI 前先在这里看效果，确认后再落到 Kotlin 代码。
 
 
 ## 构建步骤
 
-### 1. 准备离线工具链（关键，决定「完全离线」）
+### 1. 无需下载任何运行时
 
-**方式 A（推荐，最省事）**：在手机 Termux 里执行 `tools/extract_bootstrap.sh`，
-产出 `usrtar.zip`，拷到 `app/src/main/assets/usrtar.zip`。
+Python 运行时（Pyodide / WebAssembly，约 13MB）**已随仓库提供**，位于
+`app/src/main/assets/pyodide/`，构建时会自动打进 APK。clone 后即可离线构建。
 
-**方式 B**：在 Linux/CI 跑 `tools/build_offline_bundle.sh`，用官方容器构建 bootstrap。
-
-> 没有这一步，App 能启动但显示「未找到内置工具链」，不会崩溃。
+> 与旧版的关键差异：此前需要联网下载 441MB 的 `usrtar.zip` 才能让 APK 跑起来，
+> 现在这一步已彻底移除——装完即离线。
 
 ### 2. 补齐 SoraEditor 的语法配置
 
@@ -348,7 +393,7 @@ app/src/main/assets/textmate/
 └── syntaxes/*.json
 ```
 
-缺失时编辑器退化为纯文本（不崩）。
+缺失时编辑器退化为纯文本（不崩）。仓库已自带一份，通常无需操作。
 
 ### 3. 构建 APK
 
@@ -357,8 +402,11 @@ cd dev-terminal
 ./gradlew assembleDebug        # 产物：app/build/outputs/apk/debug/app-debug.apk
 ```
 
-要求：JDK 17+、Android SDK（`compileSdk 34`）。首次构建会下载 Gradle 与依赖，需联网；
-**构建完成后，App 运行时不联网**。
+要求：JDK 17+、Android SDK（`compileSdk 35`）。首次构建会下载 Gradle 与依赖，需联网；
+**构建完成后，App 运行时完全不联网**。
+
+> **构建注意**：`.wasm` 与 `.zip` 必须在 `build.gradle.kts` 中配置 `noCompress`，
+> 否则 AAPT 压缩后 WebView 无法加载，点运行即失败。
 
 ### 4. 真机验证
 
@@ -367,6 +415,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 启动后应看到：环境就绪提示 → 默认 Python 项目 → 点 ▶ 运行 → 输出面板出现结果。
+Java 文件仍可打开编辑与高亮，但点运行会提示「Java 运行暂不可用」。
 
 ## 里程碑
 
@@ -374,23 +423,25 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 |---|---|---|
 | M1 | Gradle 工程 + Compose 外壳 | ✅ |
 | M2 | 离线执行引擎（流式输出） | ✅ |
-| M3 | 内置离线 Python 工具链 | ✅ |
-| M4 | Java 多文件编译 + 运行 | ✅ |
-| M5 | 交互式 stdin（`input()` 可用） | ✅ |
+| M3 | 内置离线 Python 运行时（Pyodide / WASM，随 APK） | ✅ |
+| M4 | ~~Java 多文件编译 + 运行~~ → 架构限制，暂不可用 | ⚠️ |
+| M5 | 交互式 stdin（`input()` 运行中可喂入） | ✅ |
 | M6 | 环境自检 + 友好报错 + 运行配置 + 文件管理 + 前台服务 | ✅ |
 | M7 | SAF 导入 / 导出 | ✅ |
 | M8 | 设置页 + 主题切换 | ✅ |
 | M9 | 静态代码补全 + 崩溃日志 + 自检脚本 | ✅ |
 | M10 | 体验对标版：Tab 页 / 符号栏 / 查找替换 / 状态栏 / 会话恢复 / 输出拖高 | ✅ |
-| M11 | 2026 全家桶：命令面板 ⌘K / Git 面板 / AI 助手（BYOK）/ 全局搜索 / 代码片段 | ✅ |
-| M12 | **真实构建出 APK**：国内镜像全链路（腾讯 Gradle/SDK + 阿里云 Maven）+ 内置 28MB 工具链 + 18 语言语法，沙盒内 assembleDebug 成功 | ✅ |
+| M11 | 2026 全家桶：命令面板 ⌘K / ~~Git 面板~~ / AI 助手（BYOK）/ 全局搜索 / 代码片段 | ⚠️ |
+| M12 | **真实构建出 APK**：国内镜像全链路（腾讯 SDK + 阿里云 Maven）+ 内置 13MB Pyodide 运行时 + 18 语言语法，沙盒内 assembleDebug 成功 | ✅ |
+| M13 | **架构重构**：执行引擎换为 Pyodide（WASM），彻底移除 441MB 外置工具链依赖，真正做到装完即离线 | ✅ |
 
 ## 已知限制
 
-- **APK 体积**：v0.3.0 debug 包实测 **47MB**（含 28MB 离线 Python 3.14 工具链与
-  18 种语言语法高亮资源），不需要外部存储/下载器。不适合走 Google Play（前台服务
-  specialUse 声明繁琐），建议 F-Droid / GitCode Releases / 官网直下。
-- **Java 仅命令行**：Android 无 X11，OpenJDK 为 headless，无 Swing/JavaFX。
+- **APK 体积**：v0.6.0 debug 包实测 **31MB**（含 13MB Pyodide 运行时 + 18 种语言语法资源），
+  装完即用、无需任何下载。不适合走 Google Play（前台服务 specialUse 声明繁琐），
+  建议 F-Droid / GitCode Releases / 官网直下。
+- **Java 执行不可用**：JVM 无法运行于 WebAssembly 沙箱。编辑与语法高亮正常保留。
+- **性能**：WASM 沙箱执行约为原生的 1/10~1/50，脚本与学习场景无感，重计算场景会慢。
 - **输入行为整行提交**：stdin 按行写入（模拟回车），暂不支持逐字符输入、方向键、
   Tab 补全等终端特性——需要完整 pty。
 - **补全为静态词表**：不做语义分析，因此不能补全 `obj.` 之后的成员（需要 LSP 或类型推断）。
@@ -402,7 +453,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ## 许可证
 
 - 本项目代码：**Apache License 2.0**，见 [LICENSE](LICENSE)。
-- 第三方组件声明（SoraEditor LGPL-2.1、内置工具链等）：见 [NOTICE.md](NOTICE.md)。
+- 第三方组件声明（SoraEditor LGPL-2.1、Pyodide MPL-2.0 等）：见 [NOTICE.md](NOTICE.md)。
 
 ## 参与贡献
 
@@ -410,23 +461,23 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 1. Fork 本仓库，从 `main` 拉分支
 2. 改动 Kotlin 代码后请先跑 `python3 tools/selfcheck.py`（0 错误 0 警告再提交）
-3. UI 改动请先在 `design/mockup.html` 原型里验证效果
-4. Commit 信息用祈使句，如 `Fix stdin deadlock in TermuxEngine`
+3. UI 改动请先在 `design/mockup.html` 原型里验证效果（先跑 `tools/sync_design_runtime.sh`）
+4. Commit 信息用祈使句，如 `Fix stdin deadlock in PyodideEngine`
 
 ## 镜像构建指南（无 Android SDK 也能出包）
 
-本项目已在 **无 Android SDK 的纯 Linux 沙盒** 内真实构建出 APK（v0.3.0，47MB）。
+本项目已在 **无 Android SDK 的纯 Linux 沙盒** 内真实构建出 APK（v0.6.0，31MB）。
 构建全程使用国内镜像，无需访问 Google 服务器：
 
 | 组件 | 镜像 |
 |---|---|
-| Gradle 8.9 发行包 | `mirrors.cloud.tencent.com/gradle/`（gradle-wrapper.properties 已指向） |
+| Gradle 发行包 | `mirrors.cloud.tencent.com/gradle/`（gradle-wrapper.properties 已指向） |
 | AGP / AndroidX / SoraEditor | `maven.aliyun.com/repository/google` + `/public`（settings.gradle.kts 已配置） |
-| Android SDK platform-34 / build-tools 34 | `mirrors.cloud.tencent.com/AndroidSDK/` |
+| Android SDK platform-35 / build-tools 34 | `mirrors.cloud.tencent.com/AndroidSDK/` |
 | aapt2 / d8 / apksigner | build-tools 内置 Linux x86_64 可执行文件，直接可用 |
 
-离线工具链 `app/src/main/assets/usrtar.zip`（28MB，Python 3.14.6 + bash + coreutils +
-curl + tar 等 1745 个文件）与 `assets/textmate/`（18 种语言语法）**已随仓库提供**，
+Python 运行时 `app/src/main/assets/pyodide/`（13MB，WASM 版 CPython 3.12 + 标准库）
+与 `assets/textmate/`（18 种语言语法）**已随仓库提供**，
 clone 后无需任何额外步骤即可构建。
 
 ```bash
@@ -434,4 +485,4 @@ clone 后无需任何额外步骤即可构建。
 ./gradlew assembleDebug          # 产物：app/build/outputs/apk/debug/app-debug.apk
 ```
 
-真机安装后首次启动自动解压工具链（全程不联网），▶ 运行 `print("hello")` 即验证。
+真机安装后直接可用（运行时随包，零下载零解压），▶ 运行 `print("hello")` 即验证。

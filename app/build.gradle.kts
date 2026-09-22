@@ -14,8 +14,8 @@ android {
         applicationId = "com.devterminal"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 6
-        versionName = "0.5.0"
+        versionCode = 7
+        versionName = "0.6.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -48,6 +48,14 @@ android {
             // SoraEditor 为 LGPL，排除其许可文件避免打包冲突（许可随源码提供）
             excludes += "/META-INF/{AL2.0,LGPL2.1,license/*}"
         }
+        // ⚠ 关键：Pyodide 的 .wasm 与 .zip 若被 APK 再压缩，WebView 加载会失败。
+        // 必须原样存储（noCompress），这是 Pyodide 在 Android 上最常见的坑。
+        jniLibs { useLegacyPackaging = false }
+    }
+
+    // 让 assets 里的 WASM/标准库原样打包，不被 AAPT 压缩
+    androidResources {
+        noCompress += listOf("wasm", "zip")
     }
 }
 
@@ -74,6 +82,9 @@ dependencies {
     implementation(libs.sora.editor)
     implementation(libs.sora.editor.language.java)
     implementation(libs.sora.editor.language.textmate)
+
+    // ===== WebView 本地资源加载：Pyodide 运行器以此加载 APK 内 assets =====
+    implementation(libs.androidx.webkit)
 
     // 单元测试：纯 JVM 逻辑（如报错行解析）不依赖 Android 框架，可直接跑
     testImplementation(libs.junit)
