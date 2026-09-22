@@ -32,7 +32,7 @@ import com.devterminal.ui.theme.faint
 import com.devterminal.ui.theme.muted
 
 /**
- * AI 助手面板：BYOK + 本地端点优先（2026 移动端 AI 编程的主流形态）。
+ * AI 助手面板：BYOK（自带密钥），端点在设置页自行配置。
  *
  * 四个快捷动作：解释此文件 / 修复运行错误 / 生成测试 / 添加注释。
  * 未配置端点时显示引导而不是空白。
@@ -71,8 +71,8 @@ fun AiPanelDialog(
     ) {
         if (!configured) {
             QuietHint(
-                "未配置端点。默认是本机 Ollama（127.0.0.1:11434），" +
-                    "也可以在设置里填任何 OpenAI 兼容端点。不配置也不影响其他功能，App 依然完全离线。"
+                "未配置端点。请在设置里填入 OpenAI 兼容端点与密钥（BYOK）。" +
+                    "AI 是可选的在线服务，不配置也不影响其他功能。"
             )
         } else {
             Box(Modifier.fillMaxWidth().height(260.dp)) {

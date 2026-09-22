@@ -11,10 +11,16 @@ import java.util.concurrent.TimeUnit
 /**
  * AI 助手客户端：OpenAI 兼容协议（/chat/completions）。
  *
- * 端点策略（2026 移动端主流玩法 BYOK + 本地优先）：
- * - 默认指向本机 Ollama（http://127.0.0.1:11434/v1）—— 本地推理 = 离线可用
- * - 也可填任何 OpenAI 兼容端点（llama.cpp server / LM Studio / 云端 API）
- * - 未配置时 AI 功能不可用，App 其余功能完全离线
+ * ## 定位说明（重要）
+ * AI 是**可选的在线服务**，不属于「离线能力」——它与 Pyodide 离线运行 Python 是两回事。
+ * 用户需在设置里自行填写端点地址与 API Key（BYOK），可用云端服务，
+ * 也可指向自己部署的 OpenAI 兼容端点（llama.cpp server / LM Studio / Ollama 等）。
+ *
+ * 端点策略：
+ * - `aiBaseUrl` 完全由用户配置，形如 `https://<host>/v1`
+ * - 默认值指向本机 Ollama（`http://127.0.0.1:11434/v1`），仅作占位示例——
+ *   手机上通常没有本地推理服务，**不配置就等于不可用**，不会静默失败
+ * - 未配置端点时 App 不发起任何网络请求，其余功能完全离线
  */
 class AiClient(private val settings: com.devterminal.settings.AppSettings) {
 
@@ -88,10 +94,10 @@ class AiClient(private val settings: com.devterminal.settings.AppSettings) {
     }
 
     companion object {
-        /** 内置系统提示词：强调离线场景与简洁回答 */
+        /** 内置系统提示词：明确告知运行环境与回答风格 */
         const val SYSTEM_PROMPT =
-            "你是 DevTerminal 内置的编程助手，运行在安卓离线编程终端里。" +
-            "用户在手机上写 Python / Java。回答要求：中文、简洁、直接给结论和代码，" +
+            "你是 DevTerminal 的编程助手。用户在安卓手机上的 IDE 里写 Python / Java。" +
+            "回答要求：中文、简洁、直接给结论和代码，" +
             "代码用 Markdown 代码块标注语言，避免冗长解释。"
 
         /** 从报错输出中提取要发给 AI 的错误上下文（截断防 token 爆炸） */

@@ -128,7 +128,7 @@ fun SettingsDialog(
         SectionLabel("AI 助手（可选）")
         Spacer(Modifier.height(6.dp))
         Text(
-            "默认指向本机 Ollama，本地推理即离线可用；不配置不影响其他功能。",
+            "填写你自己的 OpenAI 兼容端点与密钥（BYOK）。默认值为占位示例，需改成实际可用的地址；不配置不影响其他功能。",
             style = MaterialTheme.typography.labelSmall,
             color = cs.muted
         )

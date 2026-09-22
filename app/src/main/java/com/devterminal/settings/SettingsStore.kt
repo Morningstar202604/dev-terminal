@@ -13,7 +13,11 @@ data class AppSettings(
     /** 输出面板高度（dp），可拖拽调整，重启保留 */
     val outputHeightDp: Int = 260,
     // ---------- AI 助手（可选，BYOK） ----------
-    /** OpenAI 兼容端点；默认本机 Ollama（本地推理 = 离线可用） */
+    /**
+     * AI 端点（OpenAI 兼容，形如 `https://<host>/v1`），由用户自行配置（BYOK）。
+     * 默认值指向本机 Ollama 仅作占位示例——手机上一般没有本地推理服务，
+     * 不填就用不了。AI 属于可选的在线服务，与「离线执行 Python」无关。
+     */
     val aiBaseUrl: String = "http://127.0.0.1:11434/v1",
     val aiApiKey: String = "",
     val aiModel: String = "qwen2.5-coder:3b",
