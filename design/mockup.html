@@ -432,6 +432,28 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
 .sym:active{ transform: scale(.9); }
 .sym.bold{ font-weight:800; color: var(--accent); }
 
+/* ---------- v0.8.0 新特性栏：主题 + 预览 ---------- */
+.v08bar{ flex:0 0 auto; display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 10px; background:var(--surface-2); border-top:1px solid var(--outline-soft); }
+.v08lab{ font-size:11px; color:var(--text-faint); white-space:nowrap; }
+.theme-chips{ display:flex; gap:5px; flex-wrap:wrap; }
+.tchip{ font-size:11px; padding:3px 9px; border-radius:999px; border:1px solid var(--outline-soft); background:var(--surface); color:var(--text); cursor:pointer; }
+.tchip:hover{ background:var(--surface-3); }
+.tchip.on{ border-color:var(--accent); color:var(--accent); font-weight:600; }
+.v08btn{ margin-left:auto; font-size:12px; padding:4px 11px; border-radius:8px; border:1px solid var(--outline-soft); background:var(--surface); color:var(--text); cursor:pointer; }
+.v08btn:hover{ background:var(--surface-3); }
+.preview-pane{ position:absolute; inset:0; background:var(--bg); z-index:40; display:flex; flex-direction:column; }
+.preview-pane[hidden]{ display:none; }
+.pp-head{ display:flex; align-items:center; padding:10px 14px; border-bottom:1px solid var(--outline); color:var(--text); font-size:13px; font-weight:600; }
+.pp-close{ margin-left:auto; background:none; border:none; color:var(--text); font-size:18px; cursor:pointer; line-height:1; }
+.pp-frame{ flex:1; width:100%; border:none; background:#ffffff; }
+/* 6 套编辑器主题（仅作用于编辑器区，便于截图对比） */
+.editor[data-theme="darcula"]{ background:#1e1f22; } .editor[data-theme="darcula"] .code{ color:#a9b7c6; } .editor[data-theme="darcula"] .gutter{ color:#5c6370; }
+.editor[data-theme="quiet-light"]{ background:#f7f7f7; } .editor[data-theme="quiet-light"] .code{ color:#333333; } .editor[data-theme="quiet-light"] .gutter{ color:#999999; }
+.editor[data-theme="monokai"]{ background:#272822; } .editor[data-theme="monokai"] .code{ color:#f8f8f2; } .editor[data-theme="monokai"] .gutter{ color:#75715e; }
+.editor[data-theme="solarized-dark"]{ background:#002b36; } .editor[data-theme="solarized-dark"] .code{ color:#93a1a1; } .editor[data-theme="solarized-dark"] .gutter{ color:#586e75; }
+.editor[data-theme="solarized-light"]{ background:#fdf6e3; } .editor[data-theme="solarized-light"] .code{ color:#586e75; } .editor[data-theme="solarized-light"] .gutter{ color:#93a1a1; }
+.editor[data-theme="tomorrow-night-blue"]{ background:#002451; } .editor[data-theme="tomorrow-night-blue"] .code{ color:#ffffff; } .editor[data-theme="tomorrow-night-blue"] .gutter{ color:#7285b7; }
+
 /* ============ IDE 状态栏（v0.2 对标 VS Code） ============ */
 .ide-status{
   flex:0 0 auto; display:flex; gap:6px; align-items:center;
@@ -612,6 +634,8 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
 .out-body .l.err{ color:#f87171; }
 .out-body .l.ok{ color: var(--green); font-weight:600; }
 .out-body .l.sys{ color:#818cf8; }
+.out-body .l.plot-line{ padding:10px 0 6px; text-align:center; background: rgba(255,255,255,.02); border-radius:10px; margin:6px 0; }
+.out-body .l.plot-line img{ max-width:100%; border-radius:8px; box-shadow:0 6px 22px rgba(0,0,0,.45); border:1px solid var(--outline); }
 
 .caret-line{
   display:inline-block; width:7px; height:14px; margin-left:1px;
@@ -963,6 +987,24 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
       <button class="tab" data-tab="java-demo/Main.java">
         Main.java<span class="tab-dot"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></span>
       </button>
+    </div>
+
+    <!-- v0.8.0 新特性栏：6 套编辑器主题 + Markdown/HTML 实时预览 -->
+    <div class="v08bar">
+      <span class="v08lab">v0.8 主题</span>
+      <div class="theme-chips" id="themeChips">
+        <button class="tchip on" data-theme="darcula">Darcula</button>
+        <button class="tchip" data-theme="quiet-light">Quiet Light</button>
+        <button class="tchip" data-theme="monokai">Monokai</button>
+        <button class="tchip" data-theme="solarized-dark">Solarized</button>
+        <button class="tchip" data-theme="solarized-light">Solar Light</button>
+        <button class="tchip" data-theme="tomorrow-night-blue">Tomorrow</button>
+      </div>
+      <button class="v08btn" id="btnPreview">👁 预览</button>
+    </div>
+    <div class="preview-pane" id="previewPane" hidden>
+      <div class="pp-head"><span>实时预览 · Markdown / HTML</span><button class="pp-close" id="btnPreviewClose">✕</button></div>
+      <iframe id="previewFrame" class="pp-frame" sandbox="allow-same-origin"></iframe>
     </div>
 
     <!-- 编辑器 -->
@@ -1352,6 +1394,42 @@ const FILES = {
       'print("你好，" + name + "！代码已在离线环境运行。")',
       'age = int(input("你几岁了？ "))',
       'print("再过 10 年你就", age + 10, "岁了")'
+    ].join("\n")
+  },
+  /* ---------- v0.8.0：离线数据科学（numpy / pandas / matplotlib） ---------- */
+  "lab_pandas": {
+    name: "stats.py", lang: "python", real: true, timeout: 120,
+    code: [
+      "import pandas as pd",
+      "import numpy as np",
+      "",
+      "df = pd.DataFrame({",
+      '    "城市": ["北京", "上海", "广州", "深圳"] * 3,',
+      '    "月份": list("一二三") * 4,',
+      '    "销量": np.random.randint(80, 200, 12),',
+      "})",
+      'res = df.groupby("城市")["销量"].agg(["mean", "max", "min"])',
+      'pd.set_option("display.unicode.east_asian_width", True)',
+      'print("各城市销量统计（离线 pandas 计算）：")',
+      "print(res.round(1))"
+    ].join("\n")
+  },
+  "lab_matplotlib": {
+    name: "plot.py", lang: "python", real: true, timeout: 120,
+    code: [
+      "import numpy as np",
+      "import matplotlib.pyplot as plt",
+      "",
+      "x = np.linspace(0, 2 * np.pi, 200)",
+      "y = np.sin(x) * np.exp(-x / 6)",
+      "",
+      'plt.figure(figsize=(6, 3.4))',
+      'plt.plot(x, y, color="#5a82ff", linewidth=2.4, label="sin(x)·e^(−x/6)")',
+      'plt.fill_between(x, y, alpha=0.18, color="#5a82ff")',
+      'plt.title("DevTerminal offline plot: sin(x) * e^(-x/6)")',
+      'plt.xlabel("x"); plt.ylabel("y")',
+      "plt.grid(alpha=0.25); plt.legend()",
+      'plt.show()   # 离线渲染为图片，直接显示在终端'
     ].join("\n")
   }
 };
@@ -1882,7 +1960,9 @@ const LAB = [
   { key:"lab_loop",    title:"死循环超时", tag:"超时",     desc:"3 秒后被安全终止" },
   { key:"lab_fileio",  title:"文件读写", tag:"IO",       desc:"离线虚拟文件系统" },
   { key:"lab_unicode", title:"中文与 Emoji", tag:"编码",     desc:"UTF-8 输出正确性" },
-  { key:"lab_quiz",    title:"交互式问答", tag:"交互",     desc:"真实 input() 预喂输入" }
+  { key:"lab_quiz",    title:"交互式问答", tag:"交互",     desc:"真实 input() 预喂输入" },
+  { key:"lab_pandas",  title:"离线数据分析", tag:"pandas",  desc:"pandas DataFrame 聚合" },
+  { key:"lab_matplotlib", title:"离线可视化", tag:"matplotlib", desc:"numpy+matplotlib 出图" }
 ];
 function renderLab(){
   $("labList").innerHTML = LAB.map(function(it){
@@ -2038,6 +2118,17 @@ function onPyMessage(e){
   if (m.type === "status"){ appendLine("hint", m.msg); return; }
   if (m.type === "error"){ appendLine("err", m.text); return; }
   if (m.type === "out"){ appendLine(m.stream === "stderr" ? "err" : "", m.text); return; }
+  if (m.type === "plot"){
+    const wrap = document.createElement("div");
+    wrap.className = "l plot-line";
+    const img = document.createElement("img");
+    img.src = "data:image/png;base64," + m.b64;
+    img.alt = "matplotlib 离线绘图";
+    wrap.appendChild(img);
+    outBody.appendChild(wrap);
+    outBody.scrollTop = outBody.scrollHeight;
+    return;
+  }
   if (m.type === "done"){
     if (_pyCurrent && _pyCurrent.to) clearTimeout(_pyCurrent.to);
     running = false; setRunning(false);
@@ -2076,6 +2167,8 @@ function realRun(p){
   appendLine("sys", "$ devterminal run " + p.mainFile);
   appendLine("hint", "正在启动离线解释器…（首次约需十几秒加载）");
   _pyCurrent = { to: null };
+  // 若上一个 worker 被看门狗终止（如死循环题），需重建解释器，否则后续题目会卡在「等待就绪」
+  if (!_pyWorker) { getPyWorker(); }
   if (_pyReady){
     startPyRun(p);
   } else {
@@ -2292,6 +2385,84 @@ if (/[?&]theme=light/.test(location.search)){
 
 /* 预热：页面加载即开始加载离线解释器，用户点「运行」时早已就绪（避免首跑卡顿） */
 getPyWorker();
+
+/* ==================================================================
+   12. v0.8.0：6 套编辑器主题 + Markdown/HTML 实时预览
+   ================================================================== */
+(function(){
+  const editorEl = document.querySelector(".editor");
+  document.querySelectorAll("#themeChips .tchip").forEach(function(b){
+    b.addEventListener("click", function(){
+      document.querySelectorAll("#themeChips .tchip").forEach(function(x){ x.classList.remove("on"); });
+      b.classList.add("on");
+      editorEl.setAttribute("data-theme", b.dataset.theme);
+      toast("主题已切换：" + b.textContent.trim());
+    });
+  });
+
+  // 极简 Markdown → HTML（仅用于预览演示，覆盖标题/加粗/行内代码/代码块/列表/引用/段落）
+  function renderMarkdown(md){
+    const esc = function(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
+    const inline = function(s){
+      return esc(s)
+        .replace(/`([^`]+)`/g, '<code style="background:#eee;padding:1px 5px;border-radius:4px;font-family:monospace">$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+        .replace(/(^|\s)(https?:\/\/\S+)/g, '$1<a href="$2">$2</a>');
+    };
+    const lines = md.replace(/\r/g,"").split("\n");
+    let html = "", i = 0;
+    while (i < lines.length){
+      const ln = lines[i];
+      if (/^```/.test(ln)){
+        let buf = []; i++;
+        while (i < lines.length && !/^```/.test(lines[i])){ buf.push(esc(lines[i])); i++; }
+        i++;
+        html += '<pre style="background:#1e1f22;color:#a9b7c6;padding:12px 14px;border-radius:8px;overflow:auto;font-family:monospace;font-size:13px">'+buf.join("\n")+'</pre>';
+        continue;
+      }
+      if (/^#{1,6}\s/.test(ln)){
+        const lv = ln.match(/^#+/)[0].length;
+        html += "<h"+lv+" style='margin:14px 0 6px'>"+inline(ln.replace(/^#+\s/,""))+"</h"+lv+">"; i++; continue;
+      }
+      if (/^>\s/.test(ln)){
+        html += "<blockquote style='border-left:4px solid #5a82ff;margin:8px 0;padding:4px 12px;color:#555;background:#f3f6ff'>"+inline(ln.replace(/^>\s/,""))+"</blockquote>"; i++; continue;
+      }
+      if (/^[-*]\s/.test(ln)){
+        let buf = [];
+        while (i < lines.length && /^[-*]\s/.test(lines[i])){ buf.push("<li>"+inline(lines[i].replace(/^[-*]\s/,""))+"</li>"); i++; }
+        html += "<ul style='margin:6px 0 6px 20px'>"+buf.join("")+"</ul>"; continue;
+      }
+      if (ln.trim() === ""){ i++; continue; }
+      html += "<p style='margin:6px 0;line-height:1.6'>"+inline(ln)+"</p>"; i++;
+    }
+    return "<div style='padding:18px 22px;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#222;line-height:1.6;max-width:680px;margin:0 auto'>"+html+"</div>";
+  }
+
+  const MD_SAMPLE = [
+    "# DevTerminal · 离线终端",
+    "",
+    "**真正的离线** Python / Java 运行环境，装完即用，不依赖外网。",
+    "",
+    "## 核心能力",
+    "- 内置 **Pyodide** 离线解释器",
+    "- 数据科学：`numpy` / `pandas` / `matplotlib`",
+    "- 6 套编辑器主题 + Markdown 实时预览",
+    "",
+    "```python",
+    "import numpy as np",
+    "print(np.arange(5) ** 2)",
+    "```",
+    "",
+    "> 随时随地，写代码。"
+  ].join("\n");
+
+  const previewPane = $("previewPane"), previewFrame = $("previewFrame");
+  $("btnPreview").addEventListener("click", function(){
+    previewFrame.srcdoc = renderMarkdown(MD_SAMPLE);
+    previewPane.hidden = false;
+  });
+  $("btnPreviewClose").addEventListener("click", function(){ previewPane.hidden = true; });
+})();
 
 })();
 </script>

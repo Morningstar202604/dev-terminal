@@ -23,3 +23,10 @@ test_results/**/*.webm
 # design/ 下的原型需要同一份运行时做浏览器端演示，但为避免重复存 13MB，
 # 该目录不入库，用 tools/sync_design_runtime.sh 从 App assets 同步过来。
 design/pyodide/full/
+
+# Node demo 依赖（本地 symlink，不入库）
+node_modules/
+
+# 构建/发布产物（APK、视频、报告）走 Release，不入库
+dist/
+交付/

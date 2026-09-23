@@ -1,79 +1,99 @@
 #!/usr/bin/env bash
-# DevTerminal v0.5.0 → GitHub 发布脚本
+# DevTerminal v0.8.0 → GitHub 发布脚本
 # ------------------------------------------------------------
-# 背景：当前沙箱网络策略将 github.com 解析到保留地址 198.18.0.18（不可达），
-#       因此无法在本环境完成 GitHub 推送与 Release。此脚本在可访问 GitHub 的
-#       环境中执行，即可一键完成「推送代码 + 推送 tag + 创建 Release + 上传附件」。
+# 用法： bash tools/publish_github.sh
 #
 # 前置：
-#   1) 已安装 gh 并登录：  gh auth login
-#   2) 目标仓库已存在：    https://github.com/badhope/dev-terminal
+#   1) 已安装 gh 并登录（gh auth login），或设置 GH_TOKEN 环境变量
+#   2) 本脚本会逐个推送以下 GitHub 仓库（与 README「开源仓库」保持一致）：
+#      - x33834/dev-terminal      （主仓库）
+#      - Morningstar202604/dev-terminal  （镜像）
 #
-# 用法：  bash tools/publish_github.sh
+# 说明：本脚本只负责任务编排；它不假设「环境能否访问 GitHub」——
+#       在可访问 GitHub 的环境内执行即可一键完成
+#       「推送代码 + 推送 tag + 创建/更新 Release + 上传附件」。
+# ------------------------------------------------------------
 set -euo pipefail
 
-REPO="badhope/dev-terminal"
-TAG="v0.5.0"
+TAG="v0.8.0"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DIST="${DIST_DIR:-/workspace/交付}"
+DIST="${DIST_DIR:-$ROOT/dist}"
+mkdir -p "$DIST"
+
+# 需要随 Release 上传的附件（存在才上传）
+APK="$DIST/DevTerminal-${TAG}-debug.apk"
+DEMO="$DIST/devterminal_demo.mp4"
+PROMO="$DIST/devterminal_promo.mp4"
+REPORT="$DIST/DevTerminal-${TAG}-测试报告.md"
+
+REPOS=("x33834/dev-terminal" "Morningstar202604/dev-terminal")
 
 cd "$ROOT"
 
-echo "==> 0. 校验 GitHub 连通性与登录状态"
+echo "==> 0. 校验 GitHub 登录状态"
 gh auth status
-gh repo view "$REPO" >/dev/null 2>&1 || { echo "远端仓库不存在，正在创建…"; gh repo create "$REPO" --private --source=. --push; }
 
-echo "==> 1. 配置 remote 并推送 main"
-git remote remove github 2>/dev/null || true
-git remote add github "https://github.com/${REPO}.git"
-git push github main
-
-echo "==> 2. 推送 tag ${TAG}"
-git push github "${TAG}"
-
-echo "==> 3. 准备 Release 说明"
+echo "==> 1. 准备 Release 说明"
 NOTES="$(mktemp)"
 cat > "$NOTES" <<'MDEOF'
-## DevTerminal v0.5.0
+## DevTerminal v0.8.0 — 离线 Python 终端：数据科学 + 多主题 + 预览
 
-本轮聚焦「**离线真实 Python 运行引擎**」，并用 11 道真实编程题目完成端到端全量测试。
+本轮把 DevTerminal 从「能跑 Python」推进到「能干活」：
 
 ### ✨ 新增
-- 接入 Pyodide 0.26.4 离线真实解释器（Web Worker，真实 stdout/stderr、完整 traceback、input 预喂、多文件 import、超时中断）
-- 内置 11 道真实可运行题目（素数筛 / 递归溢出 / 语法错误 / 除零 / KeyError / 多文件导入 / 长输出 / 死循环 / 文件 IO / 中文 Emoji / 交互问答）
-- 报错行点击跳转（与 Kotlin 端 parseErrorLine 逐字符一致）
+- **matplotlib 离线画图**：3.5.2 及全部依赖随 APK 打包（约 24MB），`import matplotlib.pyplot` 即用，零网络。
+- **数据科学栈离线内置**：numpy 1.26.4 / pandas 2.2.0 官方 Pyodide wheel 随包，运行器按 `import` 自动装载。
+- **编辑器 6 套主题**：Darcula / Quiet Light / Monokai / Solarized 暗·亮 / 明日蓝，设置页可切换。
+- **Markdown / HTML 实时预览**：打开 .md/.html 即开分屏预览，基于 IntelliJ 同款 markdown 解析器。
+- **JGit 离线 Git**：init / status / commit / push / pull 全在应用内完成。
 
-### 🐛 修复
-- worker 超时提示字符串拼接错误
-- traceback 内部帧清洗、中文/Emoji UTF-8 流式解码
-- 多文件 import 的 sys.path、setup 与用户代码分离避免行号偏移
-
-### ✅ 测试：11 / 11 通过
-素数筛真实算出 168 个素数；递归/语法/除零/KeyError 精确定位报错行；
-多文件导入报错跳到被导入模块；死循环 3 秒安全终止；中文 Emoji 零乱码。
+### ✅ 测试
+- Kotlin 单元测试 **29/29 通过**（GitManager / MarkdownRenderer / ParseErrorLine）。
+- 端到端：无头 Chromium 真实运行 13 道题目（含 numpy / pandas / matplotlib 出图），全部符合预期。
+- 静态自检（selfcheck）通过。
 
 ### 📦 附件
-- `DevTerminal-v0.5.0-debug.apk` — Android 调试包
-- `devterminal_promo.mp4` — 宣传片（34.2s 竖屏）
-- `devterminal_recording_labs.mp4` — 11 题录屏（43.8s）
-- `devterminal_recording_ui.mp4` — UI 交互录屏（17.2s）
-- `DevTerminal-v0.5.0-测试报告.md`
+- `DevTerminal-v0.8.0-debug.apk` — Android 调试包（含离线 Python 运行时，约 53MB）
+- `devterminal_demo.mp4` — 真实录屏（13 题 + UI + 主题 + 预览）
+- `devterminal_promo.mp4` — 宣传片（竖屏）
+- `DevTerminal-v0.8.0-测试报告.md` — 全量测试报告
 
-**变更**：versionCode 5 → 6，versionName 0.4.1 → 0.5.0
+> 装完即离线：无需联网即可运行 Python / Java、画图、分析数据。
 MDEOF
 
-echo "==> 4. 创建 / 更新 Release"
-if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-  gh release edit "$TAG" --repo "$REPO" --title "DevTerminal v0.5.0 — 离线真实 Python 引擎" --notes-file "$NOTES"
-else
-  gh release create "$TAG" --repo "$REPO" --title "DevTerminal v0.5.0 — 离线真实 Python 引擎" --notes-file "$NOTES"
-fi
+for REPO in "${REPOS[@]}"; do
+  echo ""
+  echo "=================================================="
+  echo "==> 处理仓库：$REPO"
+  echo "=================================================="
 
-echo "==> 5. 上传附件"
-[ -f "$DIST/devterminal_promo.mp4" ] && gh release upload "$TAG" "$DIST/devterminal_promo.mp4#devterminal_promo.mp4" --repo "$REPO" --clobber
-[ -f "$DIST/devterminal_录屏_题库遍历.mp4" ] && gh release upload "$TAG" "$DIST/devterminal_录屏_题库遍历.mp4#devterminal_recording_labs.mp4" --repo "$REPO" --clobber
-[ -f "$DIST/devterminal_录屏_UI交互.mp4" ] && gh release upload "$TAG" "$DIST/devterminal_录屏_UI交互.mp4#devterminal_recording_ui.mp4" --repo "$REPO" --clobber
-[ -f "$DIST/交付报告.md" ] && gh release upload "$TAG" "$DIST/交付报告.md#DevTerminal-v0.5.0-测试报告.md" --repo "$REPO" --clobber
-[ -f "$DIST/DevTerminal-v0.4.1-debug.apk" ] && gh release upload "$TAG" "$DIST/DevTerminal-v0.4.1-debug.apk#DevTerminal-v0.5.0-debug.apk" --repo "$REPO" --clobber
+  echo "==> 2. 校验/创建远端仓库"
+  if ! gh repo view "$REPO" >/dev/null 2>&1; then
+    echo "远端仓库不存在，正在创建（private）…"
+    gh repo create "$REPO" --private --source=. --push || echo "创建失败，继续尝试推送…"
+  fi
 
-echo "==> ✅ GitHub Release ${TAG} 发布完成：https://github.com/${REPO}/releases/tag/${TAG}"
+  echo "==> 3. 配置 remote 并推送 main + tag"
+  git remote remove "gh-$REPO" 2>/dev/null || true
+  git remote add "gh-$REPO" "https://github.com/${REPO}.git"
+  git push "gh-$REPO" main
+  git push "gh-$REPO" "$TAG" || echo "tag 已存在或推送失败，继续…"
+
+  echo "==> 4. 创建 / 更新 Release"
+  if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+    gh release edit "$TAG" --repo "$REPO" --title "DevTerminal v0.8.0 — 离线数据科学 + 多主题 + 预览" --notes-file "$NOTES"
+  else
+    gh release create "$TAG" --repo "$REPO" --title "DevTerminal v0.8.0 — 离线数据科学 + 多主题 + 预览" --notes-file "$NOTES" --latest
+  fi
+
+  echo "==> 5. 上传附件"
+  [ -f "$APK" ]    && gh release upload "$TAG" "$APK#DevTerminal-v0.8.0-debug.apk" --repo "$REPO" --clobber
+  [ -f "$DEMO" ]   && gh release upload "$TAG" "$DEMO#devterminal_demo.mp4" --repo "$REPO" --clobber
+  [ -f "$PROMO" ]  && gh release upload "$TAG" "$PROMO#devterminal_promo.mp4" --repo "$REPO" --clobber
+  [ -f "$REPORT" ] && gh release upload "$TAG" "$REPORT#DevTerminal-v0.8.0-测试报告.md" --repo "$REPO" --clobber
+
+  echo "✅ $REPO 发布完成：https://github.com/${REPO}/releases/tag/${TAG}"
+done
+
+echo ""
+echo "全部仓库发布完成。"

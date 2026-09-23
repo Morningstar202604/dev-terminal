@@ -99,6 +99,21 @@ self.onmessage = async (e) => {
       '        raise EOFError("没有更多输入（输入队列为空）")',
       '    return __IQ__.pop(0)',
       'builtins.input = __dt_input__',
+      // v0.8.0: 离线数据科学 —— 拦截 matplotlib 显示，转 base64 回传，避免阻塞 wasm 后端
+      'try:',
+      '    import matplotlib',
+      '    matplotlib.use("agg")',
+      '    import matplotlib.pyplot as plt',
+      '    __DT_PLOTS__ = []',
+      '    def __dt_show__(*a, **k):',
+      '        import io, base64',
+      '        buf = io.BytesIO()',
+      '        plt.savefig(buf, format="png", dpi=110, bbox_inches="tight")',
+      '        plt.close("all")',
+      '        __DT_PLOTS__.append(base64.b64encode(buf.getvalue()).decode())',
+      '    plt.show = __dt_show__',
+      'except Exception:',
+      '    pass',
       ''
     ].join('\n');
 
@@ -114,6 +129,12 @@ self.onmessage = async (e) => {
 
     let exitCode = 0;
     try {
+      // v0.8.0: 按 import 自动装载本地 wheel（numpy/pandas/matplotlib 等）
+      try {
+        await pyodide.loadPackagesFromImports(code + '\n' + setup);
+      } catch (e) {
+        post('status', { msg: '依赖装载跳过：' + String(e).slice(0, 80) });
+      }
       await pyodide.runPythonAsync(setup);
       await pyodide.runPythonAsync(code, { filename: mainFile || '<exec>' });
     } catch (err) {
@@ -132,6 +153,15 @@ self.onmessage = async (e) => {
 
     if (pending.stdout) post('out', { text: pending.stdout, stream: 'stdout' });
     if (pending.stderr) post('out', { text: pending.stderr, stream: 'stderr' });
+    // v0.8.0: 回传 matplotlib 生成的图（若有）
+    try {
+      const plots = pyodide.globals.get('__DT_PLOTS__');
+      if (plots) {
+        const arr = plots.toJs();
+        plots.destroy();
+        for (const b64 of arr) post('plot', { b64 });
+      }
+    } catch (_) {}
     post('done', { exitCode });
   }
 };

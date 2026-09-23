@@ -56,8 +56,10 @@ def fit(short_path, target_h):
 SLIDES = [
     ("title", None, "DevTerminal", "离线 Python / Java 编程终端", "移动端 IDE · 真实可运行 · 随时随地写代码"),
     ("00_home.png", "移动端离线编程终端", "Offline IDE in your pocket", "手机里的完整开发环境", None),
-    ("01_lab_panel.png", "内置题库 · 真实题目", "11 real runnable problems", "不是演示，是真跑", None),
+    ("01_lab_panel.png", "内置题库 · 真实题目", "13 real runnable problems", "不是演示，是真跑", None),
     ("02_lab_sieve.png", "真实 Python · 即写即跑", "Real execution · 168 primes", "素数筛算出 1..1000 内 168 个素数", None),
+    ("13_lab_pandas.png", "离线数据分析", "pandas DataFrame in pocket", "numpy / pandas 零网络聚合统计", None),
+    ("14_lab_matplotlib.png", "离线可视化出图", "matplotlib → PNG offline", "真实渲染图片，直接显示在终端", None),
     ("05_lab_zerodiv.png", "真实报错 · 完整 traceback", "Real Python traceback", "ZeroDivisionError 精确定位", None),
     ("ui_07_error_jump.png", "点击报错行 · 一键跳源码", "Click error → jump to line", "编辑器自动滚动并高亮", None),
     ("10_lab_unicode.png", "中文 / Emoji 零乱码", "Native UTF-8 output", "∑ ∫ √ π  ·  🚀🔥✅", None),
@@ -67,6 +69,8 @@ SLIDES = [
     ("ui_08_git.png", "Git 版本管理", "Built-in Git", "提交 / 拉取 / 推送", None),
     ("ui_09_ai.png", "AI 编程助手", "AI assistant", "边写边问", None),
     ("ui_10_cmdk.png", "命令面板 · 全局搜索", "Command palette & search", "键盘流直达", None),
+    ("ui_13_theme.png", "6 套编辑器主题", "6 editor themes", "Darcula / Monokai / Solarized …", None),
+    ("ui_14_markdown.png", "Markdown 实时预览", "Live Markdown preview", "写文档即时渲染", None),
     ("outro", None, "DevTerminal", "把 IDE 装进口袋", "随时随地，写代码"),
 ]
 
@@ -176,7 +180,7 @@ subprocess.run([
     "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-shortest",
     "-movflags", "+faststart", OUT_MP4,
 ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-dur = subprocess.run([FF + "probe", "-v", "error", "-show_entries", "format=duration",
+dur = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
                      "-of", "default=noprint_wrappers=1:nokey=1", OUT_MP4],
                     capture_output=True, text=True).stdout.strip()
 print("✅ 宣传片生成完成:", OUT_MP4, "时长", dur, "s")
