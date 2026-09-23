@@ -15,6 +15,10 @@
 # ------------------------------------------------------------
 set -euo pipefail
 
+# 支持 --dry-run：不触网，只校验远端配置与附件是否齐备
+DRY_RUN=0
+[ "${1:-}" = "--dry-run" ] && DRY_RUN=1
+
 TAG="v0.8.0"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIST="${DIST_DIR:-$ROOT/dist}"
@@ -29,6 +33,33 @@ REPORT="$DIST/DevTerminal-${TAG}-测试报告.md"
 REPOS=("x33834/dev-terminal" "Morningstar202604/dev-terminal")
 
 cd "$ROOT"
+
+# ------------------------------------------------------------
+# dry-run：只校验「远端配置 + 附件清单」，不触网
+# ------------------------------------------------------------
+if [ "$DRY_RUN" = "1" ]; then
+  echo "==> [dry-run] 校验远端仓库："
+  for REPO in "${REPOS[@]}"; do
+    if git remote get-url "gh-$REPO" >/dev/null 2>&1 \
+       || git remote get-url "github" >/dev/null 2>&1 \
+       || git remote get-url "github-mirror" >/dev/null 2>&1; then
+      echo "  ✅ remote 就绪：$REPO"
+    else
+      echo "  ⚠️  未配置 remote：$REPO（正式执行时会自动添加）"
+    fi
+  done
+  echo "==> [dry-run] 校验附件："
+  for f in "$APK" "$DEMO" "$PROMO" "$REPORT"; do
+    if [ -f "$f" ]; then
+      echo "  ✅ $(basename "$f")  $(du -h "$f" | cut -f1)"
+    else
+      echo "  ⚠️  缺失：$f"
+    fi
+  done
+  echo "==> [dry-run] 校验 tag：$(git tag --list "$TAG" | grep -q "$TAG" && echo "$TAG 已存在" || echo "$TAG 未创建")"
+  echo "==> [dry-run] 完成（未触网、未推送）。"
+  exit 0
+fi
 
 echo "==> 0. 校验 GitHub 登录状态"
 gh auth status
