@@ -1159,8 +1159,13 @@ private fun buildCommands(
         Icons.Filled.Settings) { onCommand("settings") })
     add(Command("about", "关于 DevTerminal", "版本与开源许可",
         Icons.Outlined.Info) { onCommand("about") })
-    // 代码片段：手写麻烦、复用率高的骨架代码
-    com.devterminal.engine.Snippets.all.forEach { s ->
+    // 代码片段：按当前文件语言过滤，避免 Python 文件里冒出来 Java 片段
+    val currentExt = ui.currentFile?.extension?.lowercase()
+    val snippetLang = when (currentExt) {
+        "java" -> com.devterminal.engine.Language.JAVA
+        else -> com.devterminal.engine.Language.PYTHON
+    }
+    com.devterminal.engine.Snippets.forLanguage(snippetLang).forEach { s ->
         add(Command(
             "snip-${s.id}",
             "插入片段：${s.title}",
