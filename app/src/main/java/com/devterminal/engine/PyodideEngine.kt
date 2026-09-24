@@ -58,6 +58,17 @@ class PyodideEngine(private val context: Context) {
     private val readyFlag = AtomicBoolean(false)
     val isEnvironmentReady: Boolean get() = readyFlag.get()
 
+    /**
+     * JS 侧是否拿到 SharedArrayBuffer。
+     * Android WebView 无 COOP/COEP 头时恒为 false：此时无法用 interruptBuffer 中断死循环，
+     * stop / 超时一律走 [hardKillAndFinish]（销毁 WebView 重建）强杀。
+     */
+    private val hasSab = AtomicBoolean(false)
+
+    /** 当前运行开始时刻，供强杀后计算耗时 */
+    @Volatile
+    private var startedAt = 0L
+
     /** 正在运行的标记，避免并发运行两段代码 */
     private val busy = AtomicBoolean(false)
 
@@ -67,8 +78,8 @@ class PyodideEngine(private val context: Context) {
      */
     private var webView: WebView? = null
 
-    /** 解释器加载完成的信号，供首次 [run] 挂起等待 */
-    private val readySignal = CompletableDeferred<Unit>()
+    /** 解释器加载完成的信号，供首次 [run] 挂起等待；强杀重建后需要重置 */
+    private var readySignal = CompletableDeferred<Unit>()
 
     // ==================== 生命周期 ====================
 
@@ -136,16 +147,47 @@ class PyodideEngine(private val context: Context) {
                 it.destroy()
             }
             webView = null
+            readyFlag.set(false)
+            readySignal = CompletableDeferred()
         }
     }
 
     // ==================== 运行 ====================
 
-    /** 强制停止当前运行（触发 JS 侧 KeyboardInterrupt） */
+    /**
+     * 强制停止当前运行。
+     *
+     * 有 SAB：向 JS 发 KeyboardInterrupt，解释器保持温热、下次运行无需重载。
+     * 无 SAB（Android WebView 常态）：evaluateJavascript 依赖 JS 事件循环，
+     * 而死循环会占死事件循环，消息根本进不去 —— 只能销毁 WebView 重建强杀。
+     */
     fun stop() {
         stopRequested = true
+        if (hasSab.get()) {
+            Handler(Looper.getMainLooper()).post {
+                webView?.evaluateJavascript("window.DevTerminalBridge && window.DevTerminalBridge.stop()", null)
+            }
+        } else {
+            hardKillAndFinish()
+        }
+    }
+
+    /**
+     * 强杀当前运行：销毁 WebView 并重置解释器状态，然后补发 Finished 事件。
+     * 用于无 SAB 时的 stop / 超时兜底。必须在协程外可安全调用（内部切主线程）。
+     */
+    private fun hardKillAndFinish() {
+        stopRequested = true
         Handler(Looper.getMainLooper()).post {
-            webView?.evaluateJavascript("window.DevTerminalBridge && window.DevTerminalBridge.stop()", null)
+            webView?.let {
+                runCatching { it.removeJavascriptInterface("DevTerminal") }
+                runCatching { it.stopLoading() }
+                runCatching { it.destroy() }
+            }
+            webView = null
+            readyFlag.set(false)
+            readySignal = CompletableDeferred()
+            RunBridge.emitFinish(RunEvent.Finished(1, System.currentTimeMillis() - startedAt))
         }
     }
 
@@ -207,6 +249,7 @@ class PyodideEngine(private val context: Context) {
         trySend(RunEvent.Started("python ${script.name}"))
 
         val started = System.currentTimeMillis()
+        startedAt = started
 
         // 事件出口：JS 回调 → Flow。收到 Finished 时立即收尾并关闭 Flow，
         // 否则 UI 的 running 状态会永远卡住（旧版漏了这一步）。
@@ -238,10 +281,13 @@ class PyodideEngine(private val context: Context) {
 
         // 兜底看门狗：JS 侧若因极端情况（WebView 崩溃等）未回调，
         // 超时后强制收尾，避免 Flow 永久挂起、UI 一直转圈。
+        // 无 SAB 时这里也是死循环的最终防线：销毁 WebView 重建，强制终止。
         val watchdog = launch(Dispatchers.IO) {
-            kotlinx.coroutines.delay(timeoutMs + 15_000L)
-            emit(RunEvent.Stderr("运行器未在规定时间内返回，已强制收尾。"))
-            emit(RunEvent.Finished(-1, System.currentTimeMillis() - started))
+            kotlinx.coroutines.delay(timeoutMs + 5_000L)
+            if (busy.get()) {
+                RunBridge.emit(RunEvent.Stderr("运行器未在规定时间内返回，已强制终止。"))
+                hardKillAndFinish()
+            }
         }
 
         awaitClose {
@@ -325,6 +371,8 @@ class PyodideEngine(private val context: Context) {
             Log.i(TAG, "runner state=$state msg=${json.optString("msg")}")
             if (state == "ready") {
                 readyFlag.set(true)
+                // msg 携带中断能力标记：'sab' = 可用 interruptBuffer；'nosab' = 只能销毁重建
+                hasSab.set(json.optString("msg") == "sab")
                 if (!readySignal.isCompleted) readySignal.complete(Unit)
             }
         }

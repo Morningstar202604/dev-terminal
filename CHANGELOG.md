@@ -2,6 +2,29 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.9.1] — 2026-09-24
+
+### 修复（阶段 0：运行引擎止血）
+- **修复 `input()` 交互输入死锁**：原实现用 `while not __IQ__: time.sleep(0.05)`
+  忙等等待输入，占死 JS 事件循环，导致 `evaluateJavascript` 注入的输入进不去，
+  真机必卡 120 秒超时。改用 Pyodide 官方 `setStdin`（浏览器默认行为即
+  `window.prompt`）：Android WebView 的 JS 运行在独立线程，同步弹框不卡 UI，
+  交互输入真正可用。预喂输入队列保留（`run` 参数 / `pushInput` 均入队）。
+- **修复死循环超时/停止在真机失效**：中断依赖 `SharedArrayBuffer`，而 WebView
+  拿不到 COOP/COEP 头，SAB 恒不可用、`interruptBuffer` 恒为 null（原注释说的
+  「强制重载」降级实际未实现）。现在 JS 侧把能力标记（sab/nosab）上报 Kotlin：
+  无 SAB 时停止/超时走 **销毁 WebView 重建强杀**（`hardKillAndFinish`），
+  死循环必然终止；Kotlin 侧兜底看门狗缩短到超时 +5s 并触发强杀。
+- **修复「停止」按钮与真实运行状态脱节**：`stopRun()` 不再立即把 UI 置为已停止，
+  运行状态以引擎 `Finished` 事件为唯一权威来源，真正收尾后才翻回可运行态；
+  点击后先显示「正在停止…」反馈。
+- **输出改为官方 write handler**：stdout/stderr 由逐字节 raw 回调改为整块
+  write 回调，大幅减少 JS↔Kotlin 桥调用次数（官方文档明确 raw 不推荐）。
+
+### 变更
+- 版本号 0.9.1（versionCode 11）。运行时仍为 Pyodide 0.26.4；
+  本阶段为阶段 1（迁移 Chaquopy 原生 CPython）前的止血修复。
+
 ## [0.9.0] — 2026-09-24
 
 ### 新增

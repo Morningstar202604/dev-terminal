@@ -20,8 +20,11 @@ import { loadPyodide } from './pyodide/pyodide.mjs';
 
 let pyodide = null;
 let interruptBuffer = null;
+let hasSab = false;
 let loading = null;
 let running = false;
+/** 预喂输入队列：pushInput 追加、stdin handler 消费 */
+let inputQueue = [];
 
 // ---- 与 Android 层的桥 ----
 function bridge(name, payload) {
@@ -56,8 +59,13 @@ async function ensure() {
     if (typeof SharedArrayBuffer !== 'undefined') {
       interruptBuffer = new Int32Array(new SharedArrayBuffer(4));
       pyodide.setInterruptBuffer(interruptBuffer);
+      hasSab = true;
+    } else {
+      // Android WebView 拿不到 COOP/COEP 头，SAB 恒不可用；
+      // 告知 Kotlin 侧走「销毁重建」强杀路径（见 PyodideEngine.hardKillAndFinish）
+      hasSab = false;
     }
-    postState('ready', '离线解释器就绪');
+    postState('ready', hasSab ? 'sab' : 'nosab');
     return pyodide;
   })();
   try { return await loading; }
@@ -84,6 +92,8 @@ async function run(msg) {
 
   const { code, files, inputs, mainFile, timeout } = msg;
   const started = Date.now();
+  // 预喂输入（run 参数），后续 input() 直接消费
+  inputQueue.push(...(inputs || []));
 
   // ---- 写入真实文件到虚拟 FS，保证 import 能解析 ----
   try { pyodide.FS.mkdir('/workspace'); } catch (_) {}
@@ -96,65 +106,58 @@ async function run(msg) {
     catch (err) { postOut('写入 ' + name + ' 失败：' + String(err), 'stderr'); }
   }
 
-  // ---- 逐字节捕获 stdout/stderr，流式 UTF-8 解码（中文/emoji 不会被拆乱码）----
+  // ---- 整块捕获 stdout/stderr，流式 UTF-8 解码（官方 write handler，比 raw 逐字节高效）----
   const td = { stdout: new TextDecoder('utf-8'), stderr: new TextDecoder('utf-8') };
   const pending = { stdout: '', stderr: '' };
-  const raw = (stream) => (charCode) => {
-    pending[stream] += td[stream].decode(new Uint8Array([charCode & 0xff]), { stream: true });
+  const write = (stream) => (buf) => {
+    pending[stream] += td[stream].decode(buf, { stream: true });
     let idx;
     while ((idx = pending[stream].indexOf('\n')) >= 0) {
       postOut(pending[stream].slice(0, idx), stream);
       pending[stream] = pending[stream].slice(idx + 1);
     }
+    return buf.length;
   };
-  pyodide.setStdout({ raw: raw('stdout') });
-  pyodide.setStderr({ raw: raw('stderr') });
+  pyodide.setStdout({ write: write('stdout') });
+  pyodide.setStderr({ write: write('stderr') });
 
-  // ---- setup 与用户代码分两次执行，避免报错行号偏移导致跳行跳错 ----
-  // input() 实现：先取预喂队列；队列空则标记「等待输入」并阻塞，
-  // 由 Kotlin 侧的 pushInput() 追加后唤醒。这样交互式程序也能真正边跑边输入。
-  const setup = [
-    'import builtins, sys, os, time',
-    'sys.path.insert(0, os.getcwd())',
-    '__IQ__ = list(' + JSON.stringify(inputs || []) + ')',
-    '__WAITING__ = False',
-    'def __dt_input__(prompt=""):',
-    '    global __WAITING__',
-    '    if prompt:',
-    '        sys.stdout.write(str(prompt)); sys.stdout.flush()',
-    '    if __IQ__:',
-    '        return __IQ__.pop(0)',
-    '    # 队列为空：标记等待中，阻塞轮询直到有新输入或超时中止',
-    '    __WAITING__ = True',
-    '    import time as _t',
-    '    _deadline = _t.time() + 120',
-    '    while not __IQ__:',
-    '        if _t.time() > _deadline:',
-    '            __WAITING__ = False',
-    '            raise EOFError("等待输入超时（120s）")',
-    '        _t.sleep(0.05)',
-    '    __WAITING__ = False',
-    '    return __IQ__.pop(0)',
-    'builtins.input = __dt_input__',
-    ''
-  ].join('\n');
+  // ---- 标准输入：预喂队列优先，队列空时弹输入框 ----
+  // 用 Pyodide 官方 stdin handler（browser 默认行为即 window.prompt）。
+  // Android WebView 的 JS 运行在独立线程，window.prompt 的同步等待不会卡 UI 主线程，
+  // 因此 input() 是真正可用的交互输入，不再有忙等死锁。
+  // 阶段 1 迁移 Chaquopy 后，本段将由「sys.stdin 队列 + 面板内联输入」替代。
+  pyodide.setStdin({
+    stdin: () => {
+      if (inputQueue.length > 0) return inputQueue.shift();
+      // 返回 null 表示 EOF（用户取消对话框），对应 Python 的 EOFError
+      return window.prompt();
+    },
+    isatty: true
+  });
 
   // ---- 超时看门狗：优先用中断缓冲（KeyboardInterrupt 取消，解释器保持温热）----
   // 在用户代码开跑前才启动：依赖装载（首次可能解包 20MB+ 的 wheel）不应吃掉用户超时。
+  // 无 SAB 时 JS 事件循环会被死循环占死，这里只能留下状态提示，
+  // 真正的强制终止由 Kotlin 侧看门狗（超时 +5s 后销毁 WebView 重建）兜底。
   const sec = timeout || 8;
   let killed = false;
   let watchdog = null;
   const armWatchdog = () => {
     watchdog = setTimeout(() => {
       killed = true;
-      if (interruptBuffer) interruptBuffer[0] = 2; // SIGINT
-      postState('timeout', '执行超时，已请求中断');
+      if (interruptBuffer) {
+        interruptBuffer[0] = 2; // SIGINT
+        postState('timeout', '执行超时，已请求中断');
+      } else {
+        postState('timeout', '执行超时，正在强制终止…');
+      }
     }, sec * 1000);
   };
 
   let exitCode = 0;
   try {
-    await pyodide.runPythonAsync(setup);
+    // setup：让同目录模块可被 import（之前整段 input 忙等实现已删除）
+    await pyodide.runPythonAsync('import sys, os; sys.path.insert(0, os.getcwd())');
     // 按代码里的 import 自动装载预打包库（numpy/pandas 及其依赖）。
     // wheel 全部内置在 APK 的 indexURL 同目录下，零网络；装载失败不拦截，
     // 交给用户代码报出真实错误（例如 import 名与内置包不一致时）。
@@ -197,17 +200,22 @@ window.DevTerminalBridge = {
     run(msg);
   },
   stop() {
-    if (interruptBuffer) interruptBuffer[0] = 2; // 触发 KeyboardInterrupt
+    if (interruptBuffer) {
+      interruptBuffer[0] = 2; // 触发 KeyboardInterrupt
+    } else {
+      // 无 SAB：JS 无法安全中断（死循环时事件循环卡死），
+      // 只留提示，强杀由 Kotlin 侧 hardKillAndFinish() 完成
+      postState('stopping', '正在强制终止运行…');
+    }
   },
   /**
-   * 运行中追加一行输入，唤醒阻塞在 input() 上的程序。
-   * 通过写入 input 队列 __IQ__ 实现：清空 EOF 标志并推入新值。
+   * 运行中追加一行输入到预喂队列（input() 尚未执行到时先缓存；
+   * 阶段 0 的真实输入走 window.prompt 对话框，阶段 1 Chaquopy 后此入口恢复为面板输入）。
    */
   pushInput(text) {
     try {
       if (!pyodide) return;
-      const v = JSON.stringify(String(text));
-      pyodide.runPython(`__IQ__.append(${v})`);
+      inputQueue.push(String(text));
     } catch (e) {
       postOut('输入写入失败：' + String(e), 'stderr');
     }

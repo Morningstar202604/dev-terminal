@@ -460,13 +460,21 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * 请求停止当前运行。
+     *
+     * 不再立即把 UI 置为「已停止」——运行状态的唯一权威来源是引擎的 Finished 事件：
+     * 引擎真正收尾（KeyboardInterrupt 或强杀）后才会发出，此时 UI 才翻回可运行态，
+     * 避免「UI 说停了、进程还在跑」的状态脱节。点击后先给用户「正在停止」反馈。
+     */
     fun stopRun() {
+        val st = _ui.value
+        if (!st.running) return
         viewModelScope.launch {
             withContext(Dispatchers.IO) { engine.stop() }
             runCatching { ExecutionService.stop(context) }
             _ui.update {
-                it.copy(running = false, inputVisible = false, message = "已停止运行",
-                    messageSeq = it.messageSeq + 1)
+                it.copy(message = "正在停止…", messageSeq = it.messageSeq + 1)
             }
         }
     }
