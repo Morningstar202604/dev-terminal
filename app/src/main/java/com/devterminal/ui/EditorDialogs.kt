@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.devterminal.BuildConfig
 import com.devterminal.project.Templates
 import com.devterminal.settings.AppSettings
+import com.devterminal.settings.ThemeModes
 import com.devterminal.engine.EnvReport
 import com.devterminal.engine.EnvDiagnostics
 import com.devterminal.ui.components.Hairline
@@ -66,7 +67,7 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsDialog(
     settings: AppSettings,
-    onToggleDark: (Boolean) -> Unit,
+    onThemeModeChange: (String) -> Unit,
     onFontSizeChange: (Int) -> Unit,
     onAutoSaveChange: (Boolean) -> Unit,
     onTimeoutChange: (Int) -> Unit,
@@ -80,12 +81,39 @@ fun SettingsDialog(
     var aiModel by remember { mutableStateOf(settings.aiModel) }
 
     QuietDialog(onDismiss = onDismiss, title = "设置") {
-        QuietSwitchRow(
-            label = "深色主题",
-            hint = "关闭后使用浅色配色",
-            checked = settings.darkTheme,
-            onChange = onToggleDark
+        Spacer(Modifier.height(Dimens.xs))
+        SectionLabel("主题外观")
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "「跟随系统」随手机系统深浅自动切换，其余为固定配色。",
+            style = MaterialTheme.typography.labelSmall,
+            color = cs.muted
         )
+        Spacer(Modifier.height(Dimens.sm))
+        // 三态选择器：跟随系统 / 浅色 / 深色，与下方「编辑器主题」同款 chip 样式
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Dimens.sm)
+        ) {
+            ThemeModes.ALL.forEach { mode ->
+                val selected = settings.themeMode == mode
+                Surface(
+                    onClick = { onThemeModeChange(mode) },
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (selected) cs.primary.copy(alpha = 0.14f) else cs.surfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        ThemeModes.label(mode),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (selected) cs.primary else cs.muted,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp)
+                    )
+                }
+            }
+        }
+
         Spacer(Modifier.height(Dimens.md))
         QuietSwitchRow(
             label = "切换文件时自动保存",

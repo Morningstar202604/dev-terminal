@@ -89,6 +89,7 @@ import com.devterminal.ui.components.QuietIconButton
 import com.devterminal.ui.components.SectionLabel
 import com.devterminal.ui.theme.Dimens
 import com.devterminal.ui.theme.Motion
+import com.devterminal.ui.theme.effectiveDarkTheme
 import com.devterminal.ui.theme.faint
 import com.devterminal.ui.theme.hairline
 import com.devterminal.ui.theme.muted
@@ -452,7 +453,7 @@ fun EditorScreen(vm: EditorViewModel) {
                     fontSize = ui.settings.editorFontSize,
                     language = if (ui.currentFile?.extension.equals("java", ignoreCase = true))
                         Language.JAVA else Language.PYTHON,
-                    darkTheme = ui.settings.darkTheme,
+                    darkTheme = ui.settings.effectiveDarkTheme(),
                     editorTheme = ui.settings.editorTheme,
                     onCursorChange = vm::onCursorChanged,
                     insertSignal = ui.insertSignal,
@@ -477,7 +478,7 @@ fun EditorScreen(vm: EditorViewModel) {
                 if (ui.previewVisible) {
                     PreviewPane(
                         html = ui.previewHtml,
-                        darkTheme = ui.settings.darkTheme,
+                        darkTheme = ui.settings.effectiveDarkTheme(),
                         modifier = Modifier.fillMaxWidth().weight(1f)
                     )
                 }
@@ -693,7 +694,7 @@ fun EditorScreen(vm: EditorViewModel) {
     if (overlay == Overlay.Settings) {
         SettingsDialog(
             settings = ui.settings,
-            onToggleDark = { vm.updateSettings(ui.settings.copy(darkTheme = it)) },
+            onThemeModeChange = { mode -> vm.updateSettings(ui.settings.copy(themeMode = mode)) },
             onFontSizeChange = { vm.updateSettings(ui.settings.copy(editorFontSize = it)) },
             onAutoSaveChange = { vm.updateSettings(ui.settings.copy(autoSave = it)) },
             onTimeoutChange = { vm.updateSettings(ui.settings.copy(timeoutSeconds = it)) },

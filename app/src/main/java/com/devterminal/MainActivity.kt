@@ -28,9 +28,9 @@ class MainActivity : ComponentActivity() {
         CrashLogger.install(this)
 
         setContent {
-            // 主题跟随用户设置（而非仅系统），设置页可实时切换
+            // 主题跟随用户设置（跟随系统/浅色/深色），设置页可实时切换
             val ui by viewModel.ui.collectAsStateWithLifecycle()
-            DevTerminalTheme(darkTheme = ui.settings.darkTheme) {
+            DevTerminalTheme(themeMode = ui.settings.themeMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = androidx.compose.material3.MaterialTheme.colorScheme.background

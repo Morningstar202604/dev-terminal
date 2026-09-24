@@ -2,6 +2,19 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.9.0] — 2026-09-24
+
+### 新增
+- **三态主题（跟随系统）**：设置页「主题外观」由原来的深浅二选一升级为
+  跟随系统 / 浅色 / 深色三态。选择「跟随系统」后，App 深浅随手机系统夜间模式
+  自动切换，无需重启即生效；编辑器主题（跟随明暗）、Markdown/HTML 预览配色
+  同步联动。旧版「深色主题」开关自动迁移为对应模式，老用户设置不丢失。
+
+### 变更
+- 版本号 0.9.0（versionCode 10）。`AppSettings.darkTheme`（Boolean）升级为
+  `themeMode`（system / light / dark），SharedPreferences 增加 `theme_mode` 键，
+  首次升级时按旧 `dark_theme` 值迁移（true→dark、false→light）。
+
 ## [0.8.0] — 2026-09-22
 
 ### 新增

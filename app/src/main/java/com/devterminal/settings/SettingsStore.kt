@@ -1,10 +1,32 @@
 package com.devterminal.settings
 
 import android.content.Context
+import android.content.res.Configuration
+
+/**
+ * 主题模式（三态）：跟随系统 / 浅色 / 深色。
+ * 存字符串而非枚举，避免新增模式时破坏 SharedPreferences 里的旧值。
+ */
+object ThemeModes {
+    const val SYSTEM = "system"
+    const val LIGHT = "light"
+    const val DARK = "dark"
+
+    /** 设置页展示顺序 */
+    val ALL = listOf(SYSTEM, LIGHT, DARK)
+
+    /** 模式的展示名（设置页三态选择器用） */
+    fun label(mode: String): String = when (mode) {
+        SYSTEM -> "跟随系统"
+        LIGHT -> "浅色"
+        else -> "深色"
+    }
+}
 
 /** 用户可配置项 */
 data class AppSettings(
-    val darkTheme: Boolean = true,
+    /** 主题模式：ThemeModes.SYSTEM / LIGHT / DARK，默认深色（与旧版 darkTheme=true 一致） */
+    val themeMode: String = ThemeModes.DARK,
     val editorFontSize: Int = 14,
     /** 切换文件时是否自动保存当前改动 */
     val autoSave: Boolean = true,
@@ -57,7 +79,7 @@ class SettingsStore(context: Context) {
         .getSharedPreferences("devterminal_settings", Context.MODE_PRIVATE)
 
     fun load(): AppSettings = AppSettings(
-        darkTheme = prefs.getBoolean(KEY_DARK, true),
+        themeMode = prefs.getString(KEY_THEME_MODE, null) ?: legacyThemeMode(),
         editorFontSize = prefs.getInt(KEY_FONT, 14),
         autoSave = prefs.getBoolean(KEY_AUTOSAVE, true),
         timeoutSeconds = prefs.getInt(KEY_TIMEOUT, 120),
@@ -76,7 +98,7 @@ class SettingsStore(context: Context) {
 
     fun save(s: AppSettings) {
         prefs.edit()
-            .putBoolean(KEY_DARK, s.darkTheme)
+            .putString(KEY_THEME_MODE, s.themeMode)
             .putInt(KEY_FONT, s.editorFontSize)
             .putBoolean(KEY_AUTOSAVE, s.autoSave)
             .putInt(KEY_TIMEOUT, s.timeoutSeconds)
@@ -109,6 +131,12 @@ class SettingsStore(context: Context) {
             ?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
     )
 
+    /** 旧版只有深浅二选一（dark_theme 布尔）。首次升级到三态时把旧值迁到 themeMode。 */
+    private fun legacyThemeMode(): String =
+        if (prefs.contains(KEY_DARK)) {
+            if (prefs.getBoolean(KEY_DARK, true)) ThemeModes.DARK else ThemeModes.LIGHT
+        } else ThemeModes.DARK
+
     /** 上一次会话的编辑现场 */
     data class SessionSnapshot(
         val projectPath: String?,
@@ -117,6 +145,7 @@ class SettingsStore(context: Context) {
     )
 
     private companion object {
+        const val KEY_THEME_MODE = "theme_mode"
         const val KEY_DARK = "dark_theme"
         const val KEY_FONT = "editor_font_size"
         const val KEY_AUTOSAVE = "auto_save"
@@ -134,4 +163,14 @@ class SettingsStore(context: Context) {
         const val KEY_GIT_EMAIL = "git_user_email"
         const val KEY_GIT_REMOTE = "git_remote_url"
     }
+}
+
+/**
+ * 把主题模式解析为「实际是否深色」，供非 Composable 层（如 ViewModel 里的预览渲染）使用。
+ * "system" 读系统配置的夜间模式位。
+ */
+fun String.resolvesDark(context: Context): Boolean = when (this) {
+    ThemeModes.LIGHT -> false
+    ThemeModes.DARK -> true
+    else -> (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 }

@@ -17,6 +17,7 @@ import com.devterminal.engine.PyodideEngine
 import com.devterminal.project.FileNode
 import com.devterminal.project.ProjectManager
 import com.devterminal.project.Templates
+import com.devterminal.settings.resolvesDark
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -604,7 +605,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun renderPreview() {
         val file = _ui.value.currentFile ?: return
         val text = _ui.value.editorText
-        val dark = _ui.value.settings.darkTheme
+        val dark = _ui.value.settings.themeMode.resolvesDark(context)
         viewModelScope.launch {
             val html = withContext(Dispatchers.Default) {
                 when (file.extension.lowercase()) {

@@ -16,6 +16,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.devterminal.settings.AppSettings
+import com.devterminal.settings.ThemeModes
+import com.devterminal.settings.resolvesDark
 
 /*
  * 设计语言：Quiet（静谧）
@@ -106,15 +109,32 @@ private val QuietTypography = Typography(
 
 @Composable
 fun DevTerminalTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: String = ThemeModes.DARK,
     content: @Composable () -> Unit
 ) {
+    // 三态解析：light 恒浅、dark 恒深、system 跟随系统
+    val dark = when (themeMode) {
+        ThemeModes.LIGHT -> false
+        ThemeModes.DARK -> true
+        else -> isSystemInDarkTheme()
+    }
     MaterialTheme(
-        colorScheme = if (darkTheme) QuietDark else QuietLight,
+        colorScheme = if (dark) QuietDark else QuietLight,
         shapes = QuietShapes,
         typography = QuietTypography,
         content = content
     )
+}
+
+/**
+ * 把设置里的主题模式解析成「当前实际明暗」，供 Composable 层（编辑器/预览面板）使用。
+ * 与 [resolvesDark] 的差别：system 分支在组合内读系统状态，切换系统深浅无需重启即生效。
+ */
+@Composable
+fun AppSettings.effectiveDarkTheme(): Boolean = when (themeMode) {
+    ThemeModes.LIGHT -> false
+    ThemeModes.DARK -> true
+    else -> isSystemInDarkTheme()
 }
 
 /** 统一间距：4dp 基准，避免各处随手写数字 */
