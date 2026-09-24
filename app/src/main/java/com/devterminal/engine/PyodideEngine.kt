@@ -48,7 +48,7 @@ import java.util.concurrent.atomic.AtomicReference
  * WASM 沙箱无法运行 JVM，Java 执行在本版已降级（保留编辑与语法高亮）。
  * 详见 [run] 中 JAVA 分支的提示。
  */
-class PyodideEngine(private val context: Context) {
+class PyodideEngine(private val context: Context) : RunEngine {
 
     /** 当前运行的取消句柄 */
     @Volatile
@@ -56,7 +56,7 @@ class PyodideEngine(private val context: Context) {
 
     /** 解释器是否已就绪（由 JS 侧 onState 回调更新） */
     private val readyFlag = AtomicBoolean(false)
-    val isEnvironmentReady: Boolean get() = readyFlag.get()
+    override val isEnvironmentReady: Boolean get() = readyFlag.get()
 
     /**
      * JS 侧是否拿到 SharedArrayBuffer。
@@ -87,7 +87,7 @@ class PyodideEngine(private val context: Context) {
      * 预热：创建 WebView 并让 JS 侧开始加载 Pyodide。
      * 阻塞式（挂起直到就绪或超时），请在协程中调用。
      */
-    suspend fun prepareEnvironment(onProgress: (Long, Long) -> Unit = { _, _ -> }) {
+    override suspend fun prepareEnvironment(onProgress: (Long, Long) -> Unit) {
         onProgress(0L, 100L)
         withContext(Dispatchers.Main) { ensureWebView() }
         onProgress(50L, 100L)
@@ -97,7 +97,7 @@ class PyodideEngine(private val context: Context) {
     }
 
     /** 主动预热解释器（后台，不阻塞） */
-    fun warmup() {
+    override fun warmup() {
         Handler(Looper.getMainLooper()).post {
             ensureWebView()?.evaluateJavascript("window.DevTerminalBridge && window.DevTerminalBridge.warmup()", null)
         }
@@ -140,7 +140,7 @@ class PyodideEngine(private val context: Context) {
     }
 
     /** 释放 WebView（退出应用时调用） */
-    fun release() {
+    override fun release() {
         Handler(Looper.getMainLooper()).post {
             webView?.let {
                 it.removeJavascriptInterface("DevTerminal")
@@ -161,7 +161,7 @@ class PyodideEngine(private val context: Context) {
      * 无 SAB（Android WebView 常态）：evaluateJavascript 依赖 JS 事件循环，
      * 而死循环会占死事件循环，消息根本进不去 —— 只能销毁 WebView 重建强杀。
      */
-    fun stop() {
+    override fun stop() {
         stopRequested = true
         if (hasSab.get()) {
             Handler(Looper.getMainLooper()).post {
@@ -199,7 +199,7 @@ class PyodideEngine(private val context: Context) {
      *
      * @return 是否已提交（WebView 已就绪即视为成功）
      */
-    fun writeStdin(line: String): Boolean {
+    override fun writeStdin(line: String): Boolean {
         var ok = false
         Handler(Looper.getMainLooper()).post {
             webView?.evaluateJavascript(
@@ -212,12 +212,12 @@ class PyodideEngine(private val context: Context) {
     }
 
     /** 关闭 stdin（Pyodide 版由输入队列与超时共同决定结束，无需额外动作） */
-    fun closeStdin() { /* no-op：EOF 由队列空 + 超时触发 */ }
+    override fun closeStdin() { /* no-op：EOF 由队列空 + 超时触发 */ }
 
     /**
      * 执行，返回事件流。签名与旧引擎一致，UI 层无需改动。
      */
-    fun run(request: RunRequest, timeoutMs: Long = 120_000L): Flow<RunEvent> = callbackFlow {
+    override fun run(request: RunRequest, timeoutMs: Long): Flow<RunEvent> = callbackFlow {
         if (busy.getAndSet(true)) {
             trySend(RunEvent.Failed("已有程序在运行中，请先停止。"))
             close(); return@callbackFlow
