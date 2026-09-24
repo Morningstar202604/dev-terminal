@@ -82,6 +82,13 @@ class ProjectManager(installer: EnvironmentInstaller) {
         return f
     }
 
+    /** 在指定目录下新建文件夹，已存在则直接返回 */
+    fun createDirectory(parentDir: String, dirName: String): File {
+        val d = File(parentDir, sanitize(dirName))
+        d.mkdirs()
+        return d
+    }
+
     fun delete(target: File): Boolean = target.deleteRecursively()
 
     /** 重命名文件/目录，返回新文件（失败返回 null） */

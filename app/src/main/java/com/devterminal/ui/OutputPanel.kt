@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -111,6 +112,7 @@ fun OutputPanel(
     /** 用户在输出区点「点击输入」入口，展开 stdin 输入行并弹键盘 */
     onRequestInput: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
+    onCopy: (() -> Unit)? = null,
     /**
      * 点击带行号的报错行时回调行号（0 基）。
      *
@@ -222,6 +224,9 @@ fun OutputPanel(
             Box(Modifier.weight(1f))
             if (onShare != null && output.isNotEmpty()) {
                 QuietIconButton(Icons.Filled.Share, "分享输出", onShare, size = 18.dp)
+            }
+            if (onCopy != null && output.isNotEmpty()) {
+                QuietIconButton(Icons.Filled.ContentCopy, "复制全部", onCopy, size = 18.dp)
             }
             QuietIconButton(Icons.Filled.PlayArrow, "重新运行", onRerun,
                 tint = cs.primary, size = 18.dp)

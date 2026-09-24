@@ -105,7 +105,9 @@ fun CodeEditorView(
      */
     scrollToLine: ScrollToLineRequest? = null,
     /** 双指缩放调整字号（zoom 增量，累积到阈值回调一次） */
-    onPinchZoom: ((Int) -> Unit)? = null
+    onPinchZoom: ((Int) -> Unit)? = null,
+    /** 自动换行：长行折到下一行 */
+    wordWrap: Boolean = false
 ) {
     val context = LocalContext.current
     // 必须在「未打开文件」分支之前创建，否则关闭最后一个 Tab 会让实例泄漏
@@ -244,6 +246,8 @@ fun CodeEditorView(
                 setTextSize(fontSize.toFloat())
                 applyScheme(this)
                 applyLanguage(this, file, language, docRef)
+                // 自动换行
+                runCatching { props.wordwrap = wordWrap }
 
                 // 启用补全组件（getter 是 getComponent）
                 runCatching {
@@ -272,6 +276,7 @@ fun CodeEditorView(
         },
         update = { view ->
             docRef.set(text)
+            runCatching { view.props.wordwrap = wordWrap }
             // 字号实时跟随设置（setTextSize 单位为 sp）
             val targetPx = TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_SP, fontSize.toFloat(), view.resources.displayMetrics

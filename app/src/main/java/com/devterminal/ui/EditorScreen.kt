@@ -31,9 +31,12 @@ import androidx.compose.material.icons.automirrored.outlined.MenuOpen
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Save
@@ -43,7 +46,9 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.HealthAndSafety
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.NavigateBefore
 import androidx.compose.material.icons.outlined.Preview
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.CircularProgressIndicator
@@ -355,6 +360,8 @@ fun EditorScreen(vm: EditorViewModel) {
                         selectedPath = ui.currentFile?.absolutePath,
                         onFileClick = { vm.openFile(File(it.path)) },
                         onFileLongPress = { node -> overlay = Overlay.FileAction(node.path) },
+                        onNewFile = { overlay = Overlay.NewFile },
+                        onNewFolder = { overlay = Overlay.NewFolder },
                         modifier = Modifier.weight(1f)
                     )
 
@@ -385,8 +392,8 @@ fun EditorScreen(vm: EditorViewModel) {
                         SectionLabel("快捷动作")
                         Spacer(Modifier.height(Dimens.sm))
                         Row(horizontalArrangement = Arrangement.spacedBy(Dimens.sm)) {
-                            ActionTile(Icons.Filled.Add, "新项目",
-                                onClick = { overlay = Overlay.NewProject },
+                            ActionTile(Icons.Outlined.Folder, "项目",
+                                onClick = { overlay = Overlay.SwitchProject },
                                 modifier = Modifier.weight(1f))
                             ActionTile(Icons.Filled.FileDownload, "导入",
                                 onClick = { importLauncher.launch(arrayOf("*/*")) },
@@ -562,6 +569,11 @@ fun EditorScreen(vm: EditorViewModel) {
                         onNewProject = { overlay = Overlay.NewProject },
                         onImport = { importLauncher.launch(arrayOf("*/*")) }
                     )
+                } else if (isImageFile(ui.currentFile)) {
+                    ImageFileViewer(
+                        file = ui.currentFile!!,
+                        modifier = Modifier.fillMaxWidth().weight(1f)
+                    )
                 } else {
                 CodeEditorView(
                     file = ui.currentFile,
@@ -572,6 +584,7 @@ fun EditorScreen(vm: EditorViewModel) {
                         Language.JAVA else Language.PYTHON,
                     darkTheme = ui.settings.effectiveDarkTheme(),
                     editorTheme = ui.settings.editorTheme,
+                    wordWrap = ui.settings.wordWrap,
                     onCursorChange = vm::onCursorChanged,
                     insertSignal = ui.insertSignal,
                     insertText = ui.insertText,
@@ -590,7 +603,7 @@ fun EditorScreen(vm: EditorViewModel) {
                             vm.updateSettings(ui.settings.copy(editorFontSize = next))
                         }
                     },
-                    scrollToLine = scrollToLine,
+                    scrollToLine = scrollToLine ?: ui.gotoLineRequest,
                     modifier = Modifier.fillMaxWidth().weight(1f)
                 )
                 // 实时预览分屏：与编辑器对半分（仅 .md / .html 文件可开）
@@ -636,6 +649,7 @@ fun EditorScreen(vm: EditorViewModel) {
                             context.startActivity(Intent.createChooser(intent, "分享运行结果"))
                         }
                     },
+                    onCopy = vm::copyOutput,
                     onJumpToLine = { line ->
                         // 报错行 → 编辑器光标。seq 自增保证连点同一行也会重新执行。
                         scrollToLine = ScrollToLineRequest(line, (scrollToLine?.seq ?: 0L) + 1L)
@@ -745,6 +759,9 @@ fun EditorScreen(vm: EditorViewModel) {
                     "runconfig" -> overlay = Overlay.RunConfig
                     "preview" -> vm.togglePreview()
                     "export" -> exportLauncher.launch(vm.suggestedExportName())
+                    "goto" -> overlay = Overlay.GotoLine
+                    "newfile" -> overlay = Overlay.NewFile
+                    "newfolder" -> overlay = Overlay.NewFolder
                 } }
             ),
             recent = recent,
@@ -834,6 +851,7 @@ fun EditorScreen(vm: EditorViewModel) {
             onEditorThemeChange = { theme ->
                 vm.updateSettings(ui.settings.copy(editorTheme = theme))
             },
+            onWordWrapChange = { vm.updateSettings(ui.settings.copy(wordWrap = it)) },
             onAiConfigChange = { url, key, model ->
                 vm.updateSettings(
                     ui.settings.copy(
@@ -853,40 +871,36 @@ fun EditorScreen(vm: EditorViewModel) {
         AboutDialog(onDismiss = ::closeOverlay)
     }
 
-    // P1-3：新建空白文件命名弹框
-    if (showNewFileDialog) {
-        QuietDialog(
-            onDismiss = { showNewFileDialog = false },
-            title = "新建文件",
-            confirmLabel = "创建",
-            onConfirm = {
-                val name = newFileName.trim()
-                if (name.isNotEmpty()) {
-                    vm.newFile(name)
-                    showNewFileDialog = false
-                    newFileName = ""
-                    scope.launch { drawerState.close() }
-                }
-            }
-        ) {
-            QuietTextField(
-                value = newFileName,
-                onValueChange = { newFileName = it },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = "文件名，如 main.py",
-                imeAction = androidx.compose.ui.text.input.ImeAction.Done,
-                onImeAction = {
-                    val name = newFileName.trim()
-                    if (name.isNotEmpty()) {
-                        vm.newFile(name)
-                        showNewFileDialog = false
-                        newFileName = ""
-                    }
-                }
-            )
-            Spacer(Modifier.height(Dimens.sm))
-            QuietHint("仅保留字母/数字/下划线/中文；重名将直接打开已有文件")
-        }
+    if (overlay == Overlay.NewFile) {
+        NewFileDialog(
+            onDismiss = ::closeOverlay,
+            onCreate = { name -> vm.newFileInCurrentDir(name); closeOverlay() }
+        )
+    }
+
+    if (overlay == Overlay.NewFolder) {
+        NewFolderDialog(
+            onDismiss = ::closeOverlay,
+            onCreate = { name -> vm.newFolderInCurrentDir(name); closeOverlay() }
+        )
+    }
+
+    if (overlay == Overlay.SwitchProject) {
+        SwitchProjectDialog(
+            projects = vm.listProjects(),
+            currentPath = ui.tree?.path,
+            onSelect = { dir -> vm.openProject(dir); closeOverlay() },
+            onNewProject = { closeOverlay(); overlay = Overlay.NewProject },
+            onDelete = { dir -> vm.deleteProject(dir) },
+            onDismiss = ::closeOverlay
+        )
+    }
+
+    if (overlay == Overlay.GotoLine) {
+        GotoLineDialog(
+            onDismiss = ::closeOverlay,
+            onGo = { line -> vm.gotoLine(line); closeOverlay() }
+        )
     }
 }
 
@@ -945,7 +959,7 @@ private fun EditorEmptyState(
                 if (hasProject) {
                     "从左侧文件树点开任意文件即可编辑，底部面板会显示运行结果"
                 } else {
-                    "Python 与 Java 的解释器、编译器和 Git 都已内置，离线随时随地跑代码"
+                    "Python 解释器（Pyodide/WASM）、numpy/pandas/matplotlib、Git 都已内置，离线随时随地跑代码"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = cs.muted,
@@ -1131,6 +1145,14 @@ private fun buildCommands(
         Icons.Filled.Add) { onCommand("newproj") })
     add(Command("export", "导出当前文件", "通过 SAF 写到手机任意位置",
         Icons.Filled.FileUpload) { onCommand("export") })
+    add(Command("goto", "跳转到行", "输入行号直达",
+        Icons.Outlined.NavigateBefore) { onCommand("goto") })
+    add(Command("copyout", "复制全部输出", "写入剪贴板",
+        Icons.Outlined.ContentCopy) { vm.copyOutput() })
+    add(Command("newfile", "新建文件", "在项目根创建",
+        Icons.Filled.NoteAdd) { onCommand("newfile") })
+    add(Command("newfolder", "新建文件夹", "在项目根创建",
+        Icons.Filled.CreateNewFolder) { onCommand("newfolder") })
     add(Command("diag", "环境自检", "Python / pip / Java / javac / Git",
         Icons.Outlined.HealthAndSafety) { onCommand("diag") })
     add(Command("settings", "设置", "主题 / 字号 / 超时 / AI 端点",
@@ -1145,5 +1167,32 @@ private fun buildCommands(
             s.description,
             Icons.Outlined.Terminal
         ) { vm.insertSymbol(s.code) })
+    }
+}
+
+/** 判断是否是图片文件（matplotlib savefig 的 png 等） */
+private fun isImageFile(file: File?): Boolean =
+    file?.extension?.lowercase() in setOf("png", "jpg", "jpeg", "gif", "webp", "bmp")
+
+/** 简单图片查看器：用 BitmapFactory 解码后填满可用区域 */
+@Composable
+private fun ImageFileViewer(file: File, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val bitmap = remember(file.absolutePath) {
+        runCatching {
+            android.graphics.BitmapFactory.decodeFile(file.absolutePath)
+        }.getOrNull()
+    }
+    Box(modifier.background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
+        if (bitmap != null) {
+            androidx.compose.foundation.Image(
+                bitmap = androidx.compose.ui.graphics.asImageBitmap(bitmap),
+                contentDescription = file.name,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit
+            )
+        } else {
+            QuietHint("无法解码图片：${file.name}")
+        }
     }
 }

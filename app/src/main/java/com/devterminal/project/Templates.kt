@@ -184,7 +184,9 @@ object Templates {
         )
     )
 
+    // Java 模板保留代码备查，但不进 all——Pyodide/WASM 沙箱跑不了 JVM，
+    // 放出来用户点了必报错。等未来接入原生 JDK 工具链再恢复。
     val all: List<ProjectTemplate> = listOf(
-        PYTHON_HELLO, PYTHON_INTERACTIVE, PYTHON_MULTI, PYTHON_DATA, JAVA_HELLO, JAVA_MULTI
+        PYTHON_HELLO, PYTHON_INTERACTIVE, PYTHON_MULTI, PYTHON_DATA
     )
 }

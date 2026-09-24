@@ -18,13 +18,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.devterminal.project.FileNode
 import com.devterminal.ui.components.MonoText
 import com.devterminal.ui.components.QuietHint
+import com.devterminal.ui.components.QuietIconButton
 import com.devterminal.ui.components.SectionLabel
 import com.devterminal.ui.theme.Dimens
 import com.devterminal.ui.theme.faint
@@ -62,6 +64,8 @@ fun FileTree(
     selectedPath: String?,
     onFileClick: (FileNode) -> Unit,
     onFileLongPress: (FileNode) -> Unit,
+    onNewFile: () -> Unit = {},
+    onNewFolder: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val cs = MaterialTheme.colorScheme
@@ -82,14 +86,8 @@ fun FileTree(
             SectionLabel("项目")
             if (root != null) {
                 Spacer(Modifier.weight(1f))
-                // 把「长按可重命名/删除」这个隐蔽手势明说出来。
-                // 原先没有任何提示，用户基本不可能自己发现。
-                Text(
-                    "长按可重命名",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = cs.faint,
-                    modifier = Modifier.padding(end = Dimens.gutter)
-                )
+                QuietIconButton(Icons.Filled.NoteAdd, "新建文件", onNewFile, size = 16.dp)
+                QuietIconButton(Icons.Filled.CreateNewFolder, "新建文件夹", onNewFolder, size = 16.dp)
             }
         }
         if (root == null) {

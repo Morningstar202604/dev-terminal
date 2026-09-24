@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -72,6 +74,7 @@ fun SettingsDialog(
     onAutoSaveChange: (Boolean) -> Unit,
     onTimeoutChange: (Int) -> Unit,
     onEditorThemeChange: (String) -> Unit,
+    onWordWrapChange: (Boolean) -> Unit,
     onAiConfigChange: (url: String, key: String, model: String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -200,6 +203,14 @@ fun SettingsDialog(
             }
             Spacer(Modifier.height(Dimens.sm))
         }
+
+        Spacer(Modifier.height(Dimens.sm))
+        QuietSwitchRow(
+            label = "自动换行",
+            hint = "长行折到下一行，不超出屏幕宽度",
+            checked = settings.wordWrap,
+            onChange = onWordWrapChange
+        )
 
         Spacer(Modifier.height(Dimens.xl))
         SectionLabel("AI 助手（可选）")
@@ -456,5 +467,121 @@ fun FileActionDialog(
                 Text("删除此文件", style = MaterialTheme.typography.labelLarge, color = cs.error)
             }
         }
+    }
+}
+
+/** 新建文件：输入文件名 */
+@Composable
+fun NewFileDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    QuietDialog(
+        onDismiss = onDismiss,
+        title = "新建文件",
+        confirmLabel = if (name.isNotBlank()) "创建" else null,
+        onConfirm = if (name.isNotBlank()) { { onCreate(name.trim()) } } else null
+    ) {
+        QuietTextField(
+            value = name,
+            onValueChange = { name = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = "如: main.py"
+        )
+        Spacer(Modifier.height(Dimens.sm))
+        Text(
+            "文件创建在当前项目根目录，创建后自动打开。",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.muted
+        )
+    }
+}
+
+/** 新建文件夹：输入文件夹名 */
+@Composable
+fun NewFolderDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    QuietDialog(
+        onDismiss = onDismiss,
+        title = "新建文件夹",
+        confirmLabel = if (name.isNotBlank()) "创建" else null,
+        onConfirm = if (name.isNotBlank()) { { onCreate(name.trim()) } } else null
+    ) {
+        QuietTextField(
+            value = name,
+            onValueChange = { name = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = "如: utils"
+        )
+    }
+}
+
+/** 切换项目：列出所有已有项目，点一个就切过去；底部可新建项目 */
+@Composable
+fun SwitchProjectDialog(
+    projects: List<java.io.File>,
+    currentPath: String?,
+    onSelect: (java.io.File) -> Unit,
+    onNewProject: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val cs = MaterialTheme.colorScheme
+    QuietDialog(onDismiss = onDismiss, title = "项目") {
+        if (projects.isEmpty()) {
+            QuietHint("还没有项目。")
+        } else {
+            projects.forEach { p ->
+                val isCurrent = p.absolutePath == currentPath
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onSelect(p) }
+                        .padding(horizontal = 6.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Outlined.Folder, null,
+                        tint = if (isCurrent) cs.primary else cs.muted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(Dimens.md))
+                    Column(Modifier.weight(1f)) {
+                        Text(p.name, style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal)
+                        if (isCurrent) {
+                            Text("当前项目", style = MaterialTheme.typography.labelSmall,
+                                color = cs.primary)
+                        }
+                    }
+                    if (isCurrent) StatusDot(cs.primary)
+                }
+            }
+        }
+        Spacer(Modifier.height(Dimens.md))
+        Hairline()
+        Spacer(Modifier.height(Dimens.sm))
+        TextButton(onClick = onNewProject) {
+            Icon(Icons.Filled.Add, null, tint = cs.primary, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("新建项目", style = MaterialTheme.typography.labelLarge, color = cs.primary)
+        }
+    }
+}
+
+/** 跳转到行：输入行号 */
+@Composable
+fun GotoLineDialog(onDismiss: () -> Unit, onGo: (Int) -> Unit) {
+    var text by remember { mutableStateOf("") }
+    QuietDialog(
+        onDismiss = onDismiss,
+        title = "跳转到行",
+        confirmLabel = if (text.toIntOrNull() != null) "跳转" else null,
+        onConfirm = text.toIntOrNull()?.let { { onGo(it) } }
+    ) {
+        QuietTextField(
+            value = text,
+            onValueChange = { text = it.filter { c -> c.isDigit() } },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = "行号（如 12）"
+        )
     }
 }

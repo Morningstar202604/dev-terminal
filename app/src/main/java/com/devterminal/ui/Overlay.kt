@@ -44,6 +44,21 @@ sealed interface Overlay {
     /** 关于 */
     data object About : Overlay
 
+    /** 新建文件（在当前项目根目录） */
+    data object NewFile : Overlay
+
+    /** 新建文件夹（在当前项目根目录） */
+    data object NewFolder : Overlay
+
+    /** 切换项目 */
+    data object SwitchProject : Overlay
+
+    /** 跳转到行 */
+    data object GotoLine : Overlay
+
+    /** 首次启动的引导（工具链就绪但尚未打开任何文件时出现） */
+    data object Onboarding : Overlay
+
     /**
      * 文件操作（重命名 / 删除）。
      * 与其余面板不同，它需要携带目标文件，所以是唯一带参数的分支。
@@ -56,6 +71,5 @@ sealed interface Overlay {
  *
  * 用自增序号作为触发信号：同一个行号连点两次也要各生效一次，
  * 若只比较行号本身，第二次点击不会产生状态变化，编辑器就不会响应。
- * @param col 目标列（0 基），0 表示落到行首；会话恢复光标时会带上具体列。
  */
-data class ScrollToLineRequest(val line: Int, val seq: Long, val col: Int = 0)
+data class ScrollToLineRequest(val line: Int, val seq: Long)

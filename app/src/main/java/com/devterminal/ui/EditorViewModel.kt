@@ -118,7 +118,9 @@ data class UiState(
     // ---------- 撤销 / 重做 ----------
     /** 每次自增触发一次 undo / redo */
     val undoSignal: Long = 0,
-    val redoSignal: Long = 0
+    val redoSignal: Long = 0,
+    /** 跳转到指定行的请求（从命令面板触发，0 基行号 + 自增 seq） */
+    val gotoLineRequest: ScrollToLineRequest? = null
 )
 
 class EditorViewModel(app: Application) : AndroidViewModel(app) {
@@ -980,6 +982,48 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     /** 从全局搜索结果打开对应文件 */
     fun openSearchHit(hit: SearchHit) {
         openFile(File(hit.filePath))
+    }
+
+    // ---------- 文件 / 项目管理（补全） ----------
+
+    /** 列出所有项目（供项目切换对话框使用） */
+    fun listProjects(): List<File> = projects.listProjects()
+
+    /** 在当前项目根目录新建文件并打开 */
+    fun newFileInCurrentDir(name: String) {
+        val dir = currentProject ?: return
+        viewModelScope.launch {
+            val f = withContext(Dispatchers.IO) { projects.createFile(dir.absolutePath, name) }
+            refreshTree()
+            openFile(f)
+        }
+    }
+
+    /** 在当前项目根目录新建文件夹 */
+    fun newFolderInCurrentDir(name: String) {
+        val dir = currentProject ?: return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { projects.createDirectory(dir.absolutePath, name) }
+            refreshTree()
+            _ui.update { it.copy(message = "已创建文件夹 $name", messageSeq = it.messageSeq + 1) }
+        }
+    }
+
+    /** 把输出面板全部内容复制到剪贴板 */
+    fun copyOutput() {
+        val text = _ui.value.output.joinToString("\n")
+        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("output", text))
+        _ui.update { it.copy(message = "已复制输出", messageSeq = it.messageSeq + 1) }
+    }
+
+    /** 跳转到指定行（用户输入 1 基行号） */
+    fun gotoLine(line: Int) {
+        _ui.update {
+            val seq = (it.gotoLineRequest?.seq ?: 0L) + 1
+            it.copy(gotoLineRequest = ScrollToLineRequest((line - 1).coerceAtLeast(0), seq))
+        }
     }
 
     // ---------- 导入 / 导出（SAF） ----------

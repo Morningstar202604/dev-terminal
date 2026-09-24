@@ -42,6 +42,8 @@ data class AppSettings(
      * "auto" = 跟随 App 明暗（深色用 darcula、浅色用 quiet-light），其余为固定主题。
      */
     val editorTheme: String = "auto",
+    /** 编辑器自动换行（长行折到下一行） */
+    val wordWrap: Boolean = false,
     // ---------- AI 助手（可选，BYOK） ----------
     /**
      * AI 端点（OpenAI 兼容，形如 `https://<host>/v1`），由用户自行配置（BYOK）。
@@ -139,6 +141,7 @@ class SettingsStore(context: Context) {
         timeoutSeconds = prefs.getInt(KEY_TIMEOUT, 120),
         outputHeightDp = prefs.getInt(KEY_OUTPUT_H, 260),
         editorTheme = prefs.getString(KEY_EDITOR_THEME, "auto") ?: "auto",
+        wordWrap = prefs.getBoolean(KEY_WORD_WRAP, false),
         aiBaseUrl = prefs.getString(KEY_AI_URL, AppSettings.DEFAULT_AI_BASE_URL)
             ?: AppSettings.DEFAULT_AI_BASE_URL,
         aiApiKey = encrypted.getString(KEY_AI_KEY, "") ?: "",
@@ -158,6 +161,7 @@ class SettingsStore(context: Context) {
             .putInt(KEY_TIMEOUT, s.timeoutSeconds)
             .putInt(KEY_OUTPUT_H, s.outputHeightDp)
             .putString(KEY_EDITOR_THEME, s.editorTheme)
+            .putBoolean(KEY_WORD_WRAP, s.wordWrap)
             .putString(KEY_AI_URL, s.aiBaseUrl)
             .putString(KEY_AI_MODEL, s.aiModel)
             .putBoolean(KEY_AI_CONFIGURED, s.aiConfigured)
@@ -224,6 +228,7 @@ class SettingsStore(context: Context) {
         const val KEY_TIMEOUT = "timeout_seconds"
         const val KEY_OUTPUT_H = "output_height_dp"
         const val KEY_EDITOR_THEME = "editor_theme"
+        const val KEY_WORD_WRAP = "word_wrap"
         const val KEY_LAST_PROJECT = "last_project"
         const val KEY_LAST_FILE = "last_file"
         const val KEY_LAST_TABS = "last_tabs"
