@@ -6,76 +6,80 @@
 <title>DevTerminal · 高保真原型</title>
 <style>
 :root{
-  /* ---- 配色（对齐 Material 3 深色主题 / VSCode Dark+） ---- */
-  --bg:            #0b1120;
-  --surface:       #111827;
-  --surface-2:     #1f2937;
-  --surface-3:     #273244;
-  --outline:       #374151;
-  --outline-soft:  #2a3546;
+  /* ---- Quiet 设计语言（REFACTOR_SPEC 1.1 色彩系统，深色冷黑） ---- */
+  --bg:            #0E1013;   /* background N8 */
+  --surface:       #15181D;   /* surface N7 */
+  --surface-2:     #1C2026;   /* surfaceVariant N6 */
+  --surface-3:     #23272E;   /* surfaceContainerHighest N5 */
+  --outline:       #2A2F37;   /* outline N4 */
+  --outline-soft:  #5A626C;   /* outlineVariant N3 */
 
-  --primary:       #6366f1;
-  --primary-dark:  #4338ca;
-  --primary-soft:  rgba(99,102,241,.16);
-  --primary-hover: rgba(99,102,241,.26);
-  --accent:        #22d3ee;
+  --primary:       #8FA7F5;   /* 品牌强调色 indigo */
+  --primary-dark:  #A6B8F8;   /* 按压提亮 */
+  --primary-soft:  rgba(143,167,245,.14);
+  --primary-hover: rgba(143,167,245,.24);
+  --accent:        #6FD3C7;   /* 辅助色 teal，仅「进行中」 */
 
-  --text:          #e5e7eb;
-  --text-dim:      #9ca3af;
-  --text-faint:    #6b7280;
+  --text:          #E7E9ED;   /* onSurface N1 */
+  --text-dim:      #A2AAB4;   /* onSurfaceVariant N2 */
+  --text-faint:    #686F79;
 
-  --green:         #34d399;
-  --amber:         #fbbf24;
+  --green:         #6FCF97;   /* success */
+  --amber:         #E0A93B;   /* warning */
+  --error:         #F08A82;   /* error */
+  --info:          #8FB8E8;   /* info */
 
-  /* 语法高亮 */
-  --syn-kw:        #c586c0;
-  --syn-str:       #ce9178;
-  --syn-com:       #6a9955;
-  --syn-fn:        #dcdcaa;
-  --syn-num:       #b5cea8;
-  --syn-bi:        #4ec9b0;
+  /* 语法高亮：从 indigo/teal/语义三色取派生色，低饱和不刺眼 */
+  --syn-kw:        #B9AFF5;   /* indigo 派生 */
+  --syn-str:       #7ED9A8;   /* success 派生 */
+  --syn-com:       #5A626C;   /* outlineVariant */
+  --syn-fn:        #8FB8E8;   /* info */
+  --syn-num:       #E0A93B;   /* warning 派生 */
+  --syn-bi:        #6FD3C7;   /* teal */
 
   --mono: "SFMono-Regular", "JetBrains Mono", Menlo, Consolas,
           "Liberation Mono", "DejaVu Sans Mono", monospace;
   --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
         "Helvetica Neue", "Noto Sans SC", "Microsoft YaHei", sans-serif;
 
-  --radius: 10px;
-  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-sm: 10px;
   --shadow: 0 24px 60px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.4);
 }
 
-/* ---- 浅色主题：色值 1:1 对齐 app/.../theme/Theme.kt 的 QuietLight ----
+/* ---- 浅色主题：色值 1:1 对齐 REFACTOR_SPEC（QuietLight） ----
    通过 <html data-theme="light"> 切换（也可用 ?theme=light），
    这样设计稿能同时反映 App 的深/浅两套配色。 */
 html[data-theme="light"]{
-  --bg:            #FAF9F7;   /* background */
-  --surface:       #FFFFFF;   /* surface */
-  --surface-2:     #F1EFEB;   /* surfaceVariant */
-  --surface-3:     #E9E6E1;   /* surfaceContainerHighest */
-  --outline:       #E3E0DA;
-  --outline-soft:  #EDEBE6;   /* outlineVariant */
+  --bg:            #FAF9F7;   /* background N1 */
+  --surface:       #FFFFFF;   /* surface N0 */
+  --surface-2:     #F1EFEB;   /* surfaceVariant N2 */
+  --surface-3:     #E9E6E1;   /* surfaceContainerHigh N3 */
+  --outline:       #E3E0DA;   /* outline N4 */
+  --outline-soft:  #C9C4BB;   /* outlineVariant N5 */
 
   --primary:       #4A63D9;
-  --primary-dark:  #2C3F8F;
+  --primary-dark:  #3B51C0;   /* 按压加深 */
   --primary-soft:  rgba(74,99,217,.10);
   --primary-hover: rgba(74,99,217,.20);
   --accent:        #2F8F86;   /* secondary：浅色下青绿换成墨绿，保证对比度 */
 
-  --text:          #1B1F24;   /* onBackground */
-  --text-dim:      #676E77;   /* onSurfaceVariant */
+  --text:          #1B1F24;   /* onSurface N9 */
+  --text-dim:      #6B727C;   /* onSurfaceVariant N6 */
   --text-faint:    #8B9199;
 
-  --green:         #1C5B54;
-  --amber:         #9A6B15;
+  --green:         #1E7E4E;
+  --amber:         #9A6700;
+  --error:         #B23B32;
+  --info:          #2B6CB0;
 
   /* 浅色下的语法高亮：降饱和 + 加深，避免在白底上刺眼 */
-  --syn-kw:        #8B3FA8;
-  --syn-str:       #A6521F;
-  --syn-com:       #4E7A3E;
-  --syn-fn:        #7A6410;
-  --syn-num:       #0A6B57;
-  --syn-bi:        #1D6E8B;
+  --syn-kw:        #6E5BD6;
+  --syn-str:       #2E8A5E;
+  --syn-com:       #8A8F96;
+  --syn-fn:        #2B6CB0;
+  --syn-num:       #9A6700;
+  --syn-bi:        #2F8F86;
 
   --shadow: 0 20px 48px rgba(27,31,36,.16), 0 2px 8px rgba(27,31,36,.08);
 }
@@ -115,8 +119,8 @@ body{
   position: relative;
   width: min(390px, 100%);
   height: min(844px, calc(100vh - 56px));
-  background: #05070d;
-  border: 10px solid #232833;
+  background: var(--bg);
+  border: 10px solid #23272E;
   border-radius: 44px;
   box-shadow: var(--shadow), 0 0 0 2px #0e1219 inset;
   overflow: hidden;
@@ -467,7 +471,7 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
   color: var(--text-faint); background: rgba(255,255,255,.05);
   padding:2px 7px; border-radius:5px; white-space:nowrap;
 }
-.ichip.warn{ color:#fbbf24; background: rgba(251,191,36,.12); }
+.ichip.warn{ color:var(--amber); background: rgba(224,169,59,.12); }
 
 /* ============ v0.3 覆盖面板（命令面板 / Git / AI / 全局搜索） ============ */
 .sheet{
@@ -521,7 +525,7 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
 .git-branch{ font-family:var(--mono); font-size:11px; color:var(--accent);
   background:rgba(99,102,241,.12); padding:2px 8px; border-radius:6px; }
 .git-file{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); padding:3px 10px; }
-.git-file b{ color:#fbbf24; font-weight:600; margin-right:8px; }
+.git-file b{ color:var(--amber); font-weight:600; margin-right:8px; }
 .git-msg{
   width:100%; padding:9px 12px; margin:8px 0 6px;
   background:var(--surface-2); border:1px solid var(--outline); border-radius:8px;
@@ -991,14 +995,14 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
 
     <!-- v0.8.0 新特性栏：6 套编辑器主题 + Markdown/HTML 实时预览 -->
     <div class="v08bar">
-      <span class="v08lab">v0.8 主题</span>
+      <span class="v08lab">主题</span>
       <div class="theme-chips" id="themeChips">
         <button class="tchip on" data-theme="darcula">Darcula</button>
         <button class="tchip" data-theme="quiet-light">Quiet Light</button>
         <button class="tchip" data-theme="monokai">Monokai</button>
-        <button class="tchip" data-theme="solarized-dark">Solarized</button>
-        <button class="tchip" data-theme="solarized-light">Solar Light</button>
-        <button class="tchip" data-theme="tomorrow-night-blue">Tomorrow</button>
+        <button class="tchip" data-theme="solarized-dark">Solarized Dark</button>
+        <button class="tchip" data-theme="solarized-light">Solarized Light</button>
+        <button class="tchip" data-theme="tomorrow-night-blue">Tomorrow Night Blue</button>
       </div>
       <button class="v08btn" id="btnPreview">👁 预览</button>
     </div>
@@ -1120,7 +1124,7 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
     <div class="sheet-box" style="height:72%">
       <div class="sheet-head">
         <span class="sh-t">✨ AI 助手</span>
-        <span class="git-branch" style="color:#34d399; background:rgba(52,211,153,.12)">Ollama 本地</span>
+        <span class="git-branch" style="color:var(--green); background:rgba(111,207,151,.12)">Ollama 本地</span>
         <button class="sheet-close" data-close="aiSheet">✕</button>
       </div>
       <div class="ai-msgs" id="aiMsgs">
@@ -1153,10 +1157,10 @@ pre.code .ln.hi{ background: rgba(99,102,241,.09); box-shadow: inset 2px 0 0 var
     <div class="sheet-box" style="height:80%">
       <div class="sheet-head">
         <span class="sh-t">🧪 测试题库</span>
-        <span class="git-branch" style="color:#22d3ee; background:rgba(34,211,238,.12)">真实离线运行</span>
+        <span class="git-branch" style="color:var(--accent); background:rgba(111,211,199,.12)">真实离线运行</span>
         <button class="sheet-close" data-close="labSheet">✕</button>
       </div>
-      <div class="sheet-sub">点任意题目：自动载入编辑器并真实运行（Pyodide 离线 Python 解释器）</div>
+      <div class="sheet-sub">点任意题目：自动载入编辑器并真实运行（原生 CPython 解释器）</div>
       <div class="sheet-body" id="labList"></div>
     </div>
   </div>
@@ -2087,7 +2091,7 @@ function lockInput(placeholder){
   session = null;
   stdin.value = "";
   stdin.disabled = true;
-  stdin.placeholder = placeholder || "程序未在等待输入…";
+  stdin.placeholder = placeholder || "等待 input() 输入…";
   btnSend.disabled = true;
 }
 
@@ -2368,8 +2372,8 @@ stdin.addEventListener("keydown", function(e){
    ================================================================== */
 renderEditor("main.py");
 clearOutput();
-appendLine("hint", "DevTerminal · 离线 Python / Java 运行环境");
-appendLine("hint", "点击右上角「运行」开始，配合下方输入框交互");
+appendLine("hint", "点击上方 ▶ 运行，输出会显示在这里");
+appendLine("hint", "运行 Python / Java 代码，输入框可与 input() 交互");
 setBadge("idle", "空闲");
 lockInput();
 
