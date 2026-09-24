@@ -30,3 +30,5 @@ node_modules/
 # 构建/发布产物（APK、视频、报告）走 Release，不入库
 dist/
 交付/
+site/_shots/
+site/_backup/
