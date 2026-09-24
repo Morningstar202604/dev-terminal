@@ -585,6 +585,8 @@ fun EditorScreen(vm: EditorViewModel) {
                     darkTheme = ui.settings.effectiveDarkTheme(),
                     editorTheme = ui.settings.editorTheme,
                     wordWrap = ui.settings.wordWrap,
+                    autoCloseBrackets = ui.settings.autoCloseBrackets,
+                    showLineNumbers = ui.settings.showLineNumbers,
                     onCursorChange = vm::onCursorChanged,
                     insertSignal = ui.insertSignal,
                     insertText = ui.insertText,
@@ -650,6 +652,7 @@ fun EditorScreen(vm: EditorViewModel) {
                         }
                     },
                     onCopy = vm::copyOutput,
+                    onSpecialKey = { key -> vm.sendInput(key) },
                     onJumpToLine = { line ->
                         // 报错行 → 编辑器光标。seq 自增保证连点同一行也会重新执行。
                         scrollToLine = ScrollToLineRequest(line, (scrollToLine?.seq ?: 0L) + 1L)
@@ -852,6 +855,8 @@ fun EditorScreen(vm: EditorViewModel) {
                 vm.updateSettings(ui.settings.copy(editorTheme = theme))
             },
             onWordWrapChange = { vm.updateSettings(ui.settings.copy(wordWrap = it)) },
+            onAutoCloseChange = { vm.updateSettings(ui.settings.copy(autoCloseBrackets = it)) },
+            onShowLineNumbersChange = { vm.updateSettings(ui.settings.copy(showLineNumbers = it)) },
             onAiConfigChange = { url, key, model ->
                 vm.updateSettings(
                     ui.settings.copy(

@@ -989,6 +989,14 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     /** 列出所有项目（供项目切换对话框使用） */
     fun listProjects(): List<File> = projects.listProjects()
 
+    /** 删除项目（当前项目不可删，由 UI 层拦截） */
+    fun deleteProject(dir: File) {
+        viewModelScope.launch(Dispatchers.IO) {
+            projects.deleteProject(dir)
+            _ui.update { it.copy(message = "已删除项目 ${dir.name}", messageSeq = it.messageSeq + 1) }
+        }
+    }
+
     /** 在当前项目根目录新建文件并打开 */
     fun newFileInCurrentDir(name: String) {
         val dir = currentProject ?: return

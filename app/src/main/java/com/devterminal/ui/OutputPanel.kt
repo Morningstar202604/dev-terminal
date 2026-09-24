@@ -25,8 +25,14 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
+
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.outlined.Keyboard
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowLeft
+import androidx.compose.material.icons.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -113,6 +119,8 @@ fun OutputPanel(
     onRequestInput: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
     onCopy: (() -> Unit)? = null,
+    /** 方向键/Tab 等特殊按键，发送对应转义序列给运行中的程序 */
+    onSpecialKey: ((String) -> Unit)? = null,
     /**
      * 点击带行号的报错行时回调行号（0 基）。
      *
@@ -340,6 +348,26 @@ fun OutputPanel(
                         )
                     }
                 )
+            }
+            // 方向键/Tab 软键盘：手机上没有物理方向键，补一排
+            if (onSpecialKey != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Dimens.gutter),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    QuietIconButton(Icons.Outlined.KeyboardArrowUp, "上",
+                        { onSpecialKey("\u001b[A") }, size = 20.dp)
+                    QuietIconButton(Icons.Outlined.KeyboardArrowDown, "下",
+                        { onSpecialKey("\u001b[B") }, size = 20.dp)
+                    QuietIconButton(Icons.Outlined.KeyboardArrowLeft, "左",
+                        { onSpecialKey("\u001b[D") }, size = 20.dp)
+                    QuietIconButton(Icons.Outlined.KeyboardArrowRight, "右",
+                        { onSpecialKey("\u001b[C") }, size = 20.dp)
+                    QuietIconButton(Icons.Outlined.Keyboard, "Tab",
+                        { onSpecialKey("\t") }, size = 20.dp)
+                }
             }
         }
     }

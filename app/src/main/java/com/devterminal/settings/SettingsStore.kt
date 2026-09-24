@@ -44,6 +44,10 @@ data class AppSettings(
     val editorTheme: String = "auto",
     /** 编辑器自动换行（长行折到下一行） */
     val wordWrap: Boolean = false,
+    /** 输入括号/引号时自动补全闭合符号 */
+    val autoCloseBrackets: Boolean = true,
+    /** 编辑器左侧显示行号 */
+    val showLineNumbers: Boolean = true,
     // ---------- AI 助手（可选，BYOK） ----------
     /**
      * AI 端点（OpenAI 兼容，形如 `https://<host>/v1`），由用户自行配置（BYOK）。
@@ -142,6 +146,8 @@ class SettingsStore(context: Context) {
         outputHeightDp = prefs.getInt(KEY_OUTPUT_H, 260),
         editorTheme = prefs.getString(KEY_EDITOR_THEME, "auto") ?: "auto",
         wordWrap = prefs.getBoolean(KEY_WORD_WRAP, false),
+        autoCloseBrackets = prefs.getBoolean(KEY_AUTO_CLOSE, true),
+        showLineNumbers = prefs.getBoolean(KEY_LINE_NUMBERS, true),
         aiBaseUrl = prefs.getString(KEY_AI_URL, AppSettings.DEFAULT_AI_BASE_URL)
             ?: AppSettings.DEFAULT_AI_BASE_URL,
         aiApiKey = encrypted.getString(KEY_AI_KEY, "") ?: "",
@@ -162,6 +168,8 @@ class SettingsStore(context: Context) {
             .putInt(KEY_OUTPUT_H, s.outputHeightDp)
             .putString(KEY_EDITOR_THEME, s.editorTheme)
             .putBoolean(KEY_WORD_WRAP, s.wordWrap)
+            .putBoolean(KEY_AUTO_CLOSE, s.autoCloseBrackets)
+            .putBoolean(KEY_LINE_NUMBERS, s.showLineNumbers)
             .putString(KEY_AI_URL, s.aiBaseUrl)
             .putString(KEY_AI_MODEL, s.aiModel)
             .putBoolean(KEY_AI_CONFIGURED, s.aiConfigured)
@@ -229,6 +237,8 @@ class SettingsStore(context: Context) {
         const val KEY_OUTPUT_H = "output_height_dp"
         const val KEY_EDITOR_THEME = "editor_theme"
         const val KEY_WORD_WRAP = "word_wrap"
+        const val KEY_AUTO_CLOSE = "auto_close_brackets"
+        const val KEY_LINE_NUMBERS = "show_line_numbers"
         const val KEY_LAST_PROJECT = "last_project"
         const val KEY_LAST_FILE = "last_file"
         const val KEY_LAST_TABS = "last_tabs"

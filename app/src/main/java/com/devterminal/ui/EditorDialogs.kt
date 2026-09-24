@@ -2,6 +2,7 @@ package com.devterminal.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -75,6 +76,8 @@ fun SettingsDialog(
     onTimeoutChange: (Int) -> Unit,
     onEditorThemeChange: (String) -> Unit,
     onWordWrapChange: (Boolean) -> Unit,
+    onAutoCloseChange: (Boolean) -> Unit,
+    onShowLineNumbersChange: (Boolean) -> Unit,
     onAiConfigChange: (url: String, key: String, model: String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -210,6 +213,22 @@ fun SettingsDialog(
             hint = "长行折到下一行，不超出屏幕宽度",
             checked = settings.wordWrap,
             onChange = onWordWrapChange
+        )
+
+        Spacer(Modifier.height(Dimens.sm))
+        QuietSwitchRow(
+            label = "自动闭合括号",
+            hint = "输入 ( [ { \" ' 时自动补全闭合符号",
+            checked = settings.autoCloseBrackets,
+            onChange = onAutoCloseChange
+        )
+
+        Spacer(Modifier.height(Dimens.sm))
+        QuietSwitchRow(
+            label = "行号",
+            hint = "编辑器左侧显示行号",
+            checked = settings.showLineNumbers,
+            onChange = onShowLineNumbersChange
         )
 
         Spacer(Modifier.height(Dimens.xl))
@@ -521,6 +540,7 @@ fun SwitchProjectDialog(
     currentPath: String?,
     onSelect: (java.io.File) -> Unit,
     onNewProject: () -> Unit,
+    onDelete: (java.io.File) -> Unit,
     onDismiss: () -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
@@ -534,7 +554,10 @@ fun SwitchProjectDialog(
                     Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .clickable { onSelect(p) }
+                        .combinedClickable(
+                            onClick = { onSelect(p) },
+                            onLongClick = { if (!isCurrent) onDelete(p) }
+                        )
                         .padding(horizontal = 6.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {

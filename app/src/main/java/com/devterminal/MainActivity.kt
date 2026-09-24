@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Surface
@@ -21,6 +22,8 @@ class MainActivity : ComponentActivity() {
     private val viewModel: EditorViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 启动屏：在 super.onCreate 之前安装，图标在深色背景上展示
+        installSplashScreen()
         // 沉浸到状态栏/导航栏：顶栏与编辑器连成一片，视觉更完整
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)

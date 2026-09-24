@@ -1,6 +1,8 @@
 package com.devterminal.ui
 
 import android.annotation.SuppressLint
+import android.content.Intent
+import android.net.Uri
 import android.webkit.WebView
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,19 +10,25 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.OpenInBrowser
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.FileProvider
+import com.devterminal.ui.components.QuietIconButton
 import com.devterminal.ui.theme.Dimens
 import com.devterminal.ui.theme.muted
+import java.io.File
 
 /**
  * 实时预览面板（编辑器分屏的下半区）：Markdown / HTML 渲染结果。
@@ -62,12 +70,33 @@ fun PreviewPane(
         Column(Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier
-                    .padding(start = Dimens.md, end = Dimens.md, top = 8.dp)
+                    .padding(start = Dimens.md, end = Dimens.md, top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     "实时预览",
                     style = MaterialTheme.typography.labelMedium,
                     color = cs.muted
+                )
+                Spacer(Modifier.weight(1f))
+                QuietIconButton(
+                    icon = Icons.Outlined.OpenInBrowser,
+                    description = "在外部浏览器打开",
+                    onClick = {
+                        runCatching {
+                            val dir = File(context.cacheDir, "shared").apply { mkdirs() }
+                            val f = File(dir, "preview.html").apply { writeText(html) }
+                            val uri: Uri = FileProvider.getUriForFile(
+                                context, "${context.packageName}.fileprovider", f
+                            )
+                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(uri, "text/html")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(intent)
+                        }
+                    },
+                    size = 18.dp
                 )
             }
             Spacer(Modifier.height(6.dp))

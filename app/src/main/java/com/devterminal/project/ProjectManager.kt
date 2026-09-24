@@ -49,6 +49,11 @@ class ProjectManager(installer: EnvironmentInstaller) {
         return dir
     }
 
+    /** 删除项目及其所有文件（递归）。当前项目不允许删。 */
+    fun deleteProject(projectDir: File) {
+        projectDir.deleteRecursively()
+    }
+
     /**
      * 递归构建文件树。
      *
