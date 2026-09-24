@@ -22,15 +22,27 @@ class NativeBridge {
     fun pushEof() { inputQueue.put(null) }
     fun clearPendingInput() { inputQueue.clear() }
 
+    // 行缓冲：CPython 的 print 按参数多次 write（"abc"、"\n" 分开），
+    // 必须在 Kotlin 侧拼接后再按 \n 断行，否则 print("a","b") 会显示成多行。
+    private val outBuf = StringBuilder()
+    private val errBuf = StringBuilder()
+
     /** 由 C 层回调：Java bridge 对象方法签名必须与 pybridge.c 中一致 */
     @Suppress("unused")
     fun onOutput(stream: String?, text: String?) {
-        val s = stream ?: "stdout"
-        val t = text ?: ""
-        // 按行转发：Kotlin 侧 RunEvent 一行一行收
-        t.split('\n').forEach { line ->
-            if (line.isNotEmpty()) NativeEngine.emitLine(s, line)
+        val buf = if (stream == "stderr") errBuf else outBuf
+        val s = text ?: ""
+        if (s.isEmpty()) return
+        buf.append(s)
+        // 切出所有完整行（含结尾换行的部分），未完结内容留在缓冲区
+        var start = 0
+        var idx: Int
+        while (buf.indexOf('\n', start).also { idx = it } >= 0) {
+            val line = buf.substring(start, idx)
+            if (line.isNotEmpty()) NativeEngine.emitLine(stream ?: "stdout", line)
+            start = idx + 1
         }
+        if (start > 0) buf.delete(0, start)
     }
 
     @Suppress("unused")

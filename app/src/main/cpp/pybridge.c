@@ -157,11 +157,11 @@ Java_com_devterminal_engine_NativeBridge_initialize(JNIEnv *env, jobject thiz, j
         setenv("PYTHONPATH", sp, 1);
         (*env)->ReleaseStringUTFChars(env, stdlibPath, sp);
     }
+    /* 注入桥模块：必须放在 Py_Initialize 之前，否则 inittab 不生效 */
+    if (PyImport_AppendInittab("dtbridge", module_init) != 0) return JNI_FALSE;
     Py_Initialize();
     PyEval_SaveThread();  /* 释放 GIL，允许其他线程进入 */
 
-    /* 注入桥模块与 stdio 桥接 */
-    if (PyImport_AppendInittab("dtbridge", module_init) != 0) return JNI_FALSE;
     PyGILState_STATE gil = PyGILState_Ensure();
     PyObject *mod = PyImport_ImportModule("dtbridge");
     if (!mod) {
@@ -219,9 +219,12 @@ Java_com_devterminal_engine_NativeBridge_execFile(JNIEnv *env, jobject thiz, jst
         } else {
             /* FILE 模式：保持用户代码的 __file__ / traceback 行号语义 */
             PyObject *globals = PyDict_New();
-            PyDict_SetItemString(globals, "__name__", PyUnicode_FromString("__main__"));
+            PyObject *name = PyUnicode_FromString("__main__");
+            PyDict_SetItemString(globals, "__name__", name);
+            Py_DECREF(name);
             PyObject *builtins = PyImport_ImportModule("builtins");
             PyDict_SetItemString(globals, "__builtins__", builtins);
+            Py_DECREF(builtins);
             PyObject *rv = PyRun_FileExFlags(fp, p, Py_file_input, globals, globals, 0, NULL);
             if (rv) {
                 Py_DECREF(rv);
@@ -236,7 +239,6 @@ Java_com_devterminal_engine_NativeBridge_execFile(JNIEnv *env, jobject thiz, jst
                 Py_XDECREF(str);
                 Py_XDECREF(ptype); Py_XDECREF(pvalue); Py_XDECREF(ptb);
             }
-            Py_XDECREF(builtins);
             Py_DECREF(globals);
             fclose(fp);
         }

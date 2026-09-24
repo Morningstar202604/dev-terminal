@@ -16,6 +16,7 @@
   - 原生 ARM64 性能，不再有 WASM 1/10~1/50 降速；
   - **真文件系统**：脚本直接读写 App 私有目录，`cwd = 项目目录`（不再是 WebView 虚拟 FS）；
   - `input()`/`print()` 在 Python 层桥接（自定义 TextIOBase），无死锁、中文不乱码；
+    Kotlin 侧做行缓冲（CPython 的 print 按参数多次 write），`print("a","b")` 正确显示为一行；
   - **死循环可中断**：`Py_AddPendingCall` 在字节码检查点抛 `KeyboardInterrupt`；阻塞在 `input()` 时推 EOF 兜底，两条路径都能停下运行。
 
 ### 变更
