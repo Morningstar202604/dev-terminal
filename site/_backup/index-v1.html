@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DevTerminal — 完全离线的安卓编程终端</title>
+<meta name="description" content="DevTerminal：手机上的现代 IDE，离线运行 Python / Java，零网络依赖，免费无广告，Apache-2.0 开源。">
+<style>
+  :root {
+    --bg: #0a0d12; --card: #131922; --line: #243040;
+    --text: #e9eef6; --muted: #93a4b8; --purple: #a78bfa; --green: #34d399; --orange: #fb923c;
+    --grad: linear-gradient(135deg, #7f52ff, #34d399);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, "PingFang SC", "Segoe UI", Roboto, sans-serif; line-height: 1.7; }
+  a { color: var(--purple); text-decoration: none; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  nav { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; }
+  nav .logo { font-weight: 800; font-size: 20px; }
+  nav .logo span { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .btn { display: inline-block; padding: 10px 22px; border-radius: 10px; font-weight: 700; font-size: 15px; transition: .2s; }
+  .btn-primary { background: var(--grad); color: #0a0d12; }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(127,82,255,.3); }
+  .btn-ghost { border: 1px solid var(--line); color: var(--text); }
+  .btn-ghost:hover { border-color: var(--purple); }
+
+  header { padding: 72px 0 56px; text-align: center; background:
+    radial-gradient(600px 300px at 25% 0%, rgba(127,82,255,.14), transparent),
+    radial-gradient(600px 300px at 75% 0%, rgba(52,211,153,.10), transparent); }
+  header h1 { font-size: clamp(30px, 5vw, 46px); font-weight: 900; }
+  header h1 em { font-style: normal; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  header p.sub { color: var(--muted); max-width: 660px; margin: 18px auto 0; font-size: 17px; }
+  .badges { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 26px; }
+  .badge { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 6px 16px; font-size: 13.5px; font-weight: 600; }
+  .badge b { color: var(--orange); }
+  .cta { margin-top: 34px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+
+  section { padding: 56px 0; }
+  h2 { font-size: 28px; font-weight: 800; margin-bottom: 8px; text-align: center; }
+  p.lead { color: var(--muted); text-align: center; margin-bottom: 36px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 26px; }
+  .card .ico { font-size: 30px; }
+  .card h3 { margin: 12px 0 8px; font-size: 18px; }
+  .card p { color: var(--muted); font-size: 14.5px; }
+
+  .shot { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; margin-top: 20px; }
+  .shot img { width: 100%; display: block; }
+  .shot figcaption { padding: 14px 18px; color: var(--muted); font-size: 14px; }
+
+  table.cmp { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 14px; overflow: hidden; font-size: 14.5px; }
+  .cmp th, .cmp td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: left; }
+  .cmp th { background: #1a2230; font-weight: 700; }
+  .cmp td:last-child { font-weight: 700; color: var(--green); }
+  .cmp tr:last-child td { border-bottom: none; }
+
+  .dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; }
+  .dl .card { text-align: center; }
+  .dl .card p { margin-bottom: 16px; font-size: 13.5px; }
+  pre { background: #0d1117; border: 1px solid var(--line); border-radius: 12px; padding: 18px; overflow-x: auto; font-size: 13.5px; color: #c9d6e4; margin-top: 18px; }
+  code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+
+  footer { border-top: 1px solid var(--line); padding: 32px 0; text-align: center; color: var(--muted); font-size: 13.5px; }
+  footer a { margin: 0 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav>
+    <div class="logo">Dev<span>Terminal</span></div>
+    <div>
+      <a class="btn btn-ghost" href="https://github.com/x33834/dev-terminal">GitHub</a>
+      <a class="btn btn-primary" href="#download">⬇ 下载 APK</a>
+    </div>
+  </nav>
+
+  <header>
+    <h1>📱 <em>完全离线</em>的安卓编程终端</h1>
+    <p class="sub">在手机上直接写、跑、调试 Python 与 Java。内嵌完整工具链（CPython + OpenJDK 17 + Git），界面是现代 IDE，而不是命令行的黑框——全程零网络。</p>
+    <div class="badges">
+      <span class="badge"><b>100%</b> 离线运行</span>
+      <span class="badge"><b>2</b> 门语言（Python / Java）</span>
+      <span class="badge"><b>Kotlin 2.0</b> + Compose</span>
+      <span class="badge"><b>0</b> 广告 · 免费开源</span>
+    </div>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://gitcode.com/badhope/dev-terminal/releases">⬇ 从 GitCode 直下 APK（454MB 完整版）</a>
+      <a class="btn btn-ghost" href="https://github.com/x33834/dev-terminal/releases/latest">GitHub Release</a>
+    </div>
+  </header>
+
+  <section>
+    <h2>为什么值得你点 Star</h2>
+    <p class="lead">Termux 是黑框终端、Pydroid 装包要联网、Acode 跑不了真代码——DevTerminal 把「真离线」和「现代 IDE」一起做到了手机上。</p>
+    <div class="grid">
+      <div class="card"><div class="ico">🚀</div><h3>真实引擎，不是模拟</h3><p>Pyodide 0.26.4 + Web Worker 架构：真实 stdout/stderr、完整 traceback、<code>input()</code> 预喂、多文件 import、超时中断——11 道真实题目端到端全过。</p></div>
+      <div class="card"><div class="ico">🧰</div><h3>开箱即用的离线工具链</h3><p>内置 CPython、OpenJDK 17 与 Git 工具链（441MB 随包分发），装上就写代码，飞行模式下照样跑。</p></div>
+      <div class="card"><div class="ico">✨</div><h3>现代 IDE 体验</h3><p>26 键快捷符号栏、多文件 Tab、全局搜索、正则计数跳转、双指缩放字号、报错行点击直达源码。</p></div>
+      <div class="card"><div class="ico">🤖</div><h3>本机 AI 助手</h3><p>对接本机 Ollama，AI 补全与答疑同样离线——你的代码永远不出手机。</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>与市面方案的区别</h2>
+    <p class="lead">2026-09 逐项核实各应用官方页面。</p>
+    <table class="cmp">
+      <tr><th>能力</th><th>Termux</th><th>Pydroid 3</th><th>Acode</th><th>DevTerminal</th></tr>
+      <tr><td>现代 IDE 界面</td><td>❌ 命令行</td><td>⚠️ 较旧</td><td>✅</td><td>✅ Compose</td></tr>
+      <tr><td>多语言</td><td>✅</td><td>❌ 仅 Python</td><td>⚠️ Web</td><td>✅ Python + Java</td></tr>
+      <tr><td>完全离线</td><td>⚠️ 装包联网</td><td>⚠️ 部分</td><td>⚠️</td><td>✅ <b>零网络</b></td></tr>
+      <tr><td>Git 集成</td><td>✅</td><td>❌</td><td>✅</td><td>✅ 内置</td></tr>
+      <tr><td>离线 AI 助手</td><td>❌</td><td>❌</td><td>❌ 云端</td><td>✅ Ollama 本机</td></tr>
+      <tr><td>价格</td><td>免费</td><td>免费+广告</td><td>免费+广告</td><td>✅ <b>免费无广告</b></td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>看一眼就知道</h2>
+    <p class="lead">设计稿与真机截图。</p>
+    <figure class="shot">
+      <img loading="lazy" src="https://raw.githubusercontent.com/x33834/dev-terminal/main/design/preview.png" alt="DevTerminal 原型预览">
+      <figcaption>整体预览：编辑器、输出面板与快捷符号栏。</figcaption>
+    </figure>
+    <figure class="shot">
+      <img loading="lazy" src="https://raw.githubusercontent.com/x33834/dev-terminal/main/design/screenshots/03-running.png" alt="代码运行中界面">
+      <figcaption>代码运行中：真实解释器执行，输出实时流式渲染。</figcaption>
+    </figure>
+    <figure class="shot">
+      <img loading="lazy" src="https://raw.githubusercontent.com/x33834/dev-terminal/main/design/screenshots/05-error-jump.png" alt="报错行点击跳转">
+      <figcaption>traceback 行号可点击，直达出错源码行。</figcaption>
+    </figure>
+  </section>
+
+  <section id="download">
+    <h2>下载 APK</h2>
+    <p class="lead">454MB 完整版内嵌全部离线工具链，安装即用。</p>
+    <div class="dl">
+      <div class="card"><h3>⬇ GitCode Release</h3><p>完整 APK（454MB）+ 工具链包直链，国内速度最快。</p><a class="btn btn-primary" href="https://gitcode.com/badhope/dev-terminal/releases">前往下载</a></div>
+      <div class="card"><h3>🐙 GitHub Release</h3><p>CI 自动构建的 APK 与源码，最新 tag 直达。</p><a class="btn btn-ghost" href="https://github.com/x33834/dev-terminal/releases/latest">前往下载</a></div>
+      <div class="card"><h3>🔴 Gitee 镜像</h3><p>源码同步镜像。</p><a class="btn btn-ghost" href="https://gitee.com/badhope/dev-terminal">前往仓库</a></div>
+    </div>
+    <h2 style="margin-top:48px">自己构建</h2>
+<pre><code>git clone https://github.com/x33834/dev-terminal.git
+cd dev-terminal
+bash tools/fetch_toolchain.sh     # 下载 + SHA256 校验工具链到 assets/
+./gradlew assembleDebug           # 构建 APK（约 454MB）</code></pre>
+  </section>
+
+  <footer>
+    <p><b>DevTerminal</b> — Apache-2.0 · 由 <a href="https://github.com/x33834">x33834</a> 维护 · 四平台同步：<a href="https://github.com/x33834/dev-terminal">GitHub</a> · <a href="https://gitcode.com/badhope/dev-terminal">GitCode</a> · <a href="https://gitee.com/badhope/dev-terminal">Gitee</a></p>
+  </footer>
+
+</div>
+</body>
+</html>
