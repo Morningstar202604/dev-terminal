@@ -15,6 +15,7 @@ import com.devterminal.engine.RunEvent
 import com.devterminal.engine.RunRequest
 import com.devterminal.engine.PyodideEngine
 import com.devterminal.engine.RunEngine
+import com.devterminal.engine.EngineProvider
 import com.devterminal.project.FileNode
 import com.devterminal.project.ProjectManager
 import com.devterminal.project.Templates
@@ -118,10 +119,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     private val installer = EnvironmentInstaller(context)
 
     /**
-     * 真离线执行引擎：内置 Pyodide（WebAssembly 版 CPython），随 APK 打包、装完即离线。
-     * 替代了旧的原生 Termux 工具链方案（依赖 441MB 外置包，与「离线」定位矛盾）。
+     * 真离线执行引擎：
+     * - 默认原生 CPython（PEP 738 官方 Android 支持，libpython 随 APK 打包，零外部依赖）；
+     * - APK 未带原生运行时（过渡期）自动回退 Pyodide（WebAssembly 版 CPython）。
+     * 引擎切换对 UI 透明（RunEngine 接口）。
      */
-    private val engine: RunEngine = PyodideEngine(context)
+    private val engine: RunEngine = EngineProvider.create(context)
     private val projects = ProjectManager(installer)
     private val settingsStore = com.devterminal.settings.SettingsStore(context)
 

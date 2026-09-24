@@ -2,6 +2,39 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.9.2] — 2026-09-25
+
+### 新增（阶段 1：原生 CPython 引擎落地）
+
+- **原生 CPython 3.13.9 运行引擎**（PEP 738 官方 Android 支持，零外部依赖）：
+  - 工具链全部为免费公开物，**无需任何申请/授权**：NDK 27.3（Google 官方）+ CPython 源码（GitHub）+ BeeWare 预编译依赖；
+  - `libpython3.13.so` 原生 ARM64 交叉编译产物 + `libpybridge.so`（自写 JNI 桥，约 350 行 C）随 APK 打包；
+  - 标准库（7561 个纯 .py 文件）打包为 `assets/python-stdlib.zip`，首次运行解压到私有目录；
+  - 引擎按需惰性初始化：首次运行前解压标准库并 `Py_Initialize`（约 0.5~2 秒），之后秒开。
+- **双引擎架构**：`EngineProvider` 工厂自动选择——APK 带原生运行时用 NativeEngine，否则回退 Pyodide；UI 对引擎切换完全透明（`RunEngine` 接口）。
+- **原生引擎核心能力**（相对 Pyodide/WASM 的质变）：
+  - 原生 ARM64 性能，不再有 WASM 1/10~1/50 降速；
+  - **真文件系统**：脚本直接读写 App 私有目录，`cwd = 项目目录`（不再是 WebView 虚拟 FS）；
+  - `input()`/`print()` 在 Python 层桥接（自定义 TextIOBase），无死锁、中文不乱码；
+  - **死循环可中断**：`Py_AddPendingCall` 在字节码检查点抛 `KeyboardInterrupt`；阻塞在 `input()` 时推 EOF 兜底，两条路径都能停下运行。
+
+### 变更
+
+- 版本号 0.9.2（versionCode 12）。
+- **路线变更：废弃 Chaquopy 方案**（需向 Chaquo 公司邮件申请开源 license，违反本项目
+  「零外部申请依赖」的硬约束），改为 CPython 官方 Android 支持自建原生运行时；
+  `docs/CHAQUOPY_LICENSE_APPLICATION.md` 已删除。
+- 引擎注入点：`EditorViewModel` 由直接 new `PyodideEngine` 改为 `EngineProvider.create(context)`。
+- 构建脚本 `scripts/build_apk.sh`（沙箱专用：自动清 Gradle 孤儿锁 + 至多 3 次重试）、
+  打包脚本 `scripts/package_native.sh`（NDK clang 编译 JNI 桥 + 打包标准库）入库。
+
+### 说明
+
+- 过渡期 Pyodide 仍在 APK 内（约 72MB assets）；原生引擎验证稳定后整体下线，
+  APK 预计从约 115MB 降至约 48MB。
+- `input()` 交互在原生引擎下需要用户在输出面板输入框输入——当前沿用 Pyodide 的输入面板，
+  NativeEngine 已实现 `writeStdin`/`closeStdin` 接口，UI 无需改动。
+
 ## [0.9.1] — 2026-09-24
 
 ### 修复（阶段 0：运行引擎止血）
@@ -23,7 +56,7 @@
 
 ### 变更
 - 版本号 0.9.1（versionCode 11）。运行时仍为 Pyodide 0.26.4；
-  本阶段为阶段 1（迁移 Chaquopy 原生 CPython）前的止血修复。
+  本阶段为阶段 1（迁移原生 CPython，PEP 738）前的止血修复。
 
 ## [0.9.0] — 2026-09-24
 

@@ -14,10 +14,17 @@ android {
         applicationId = "com.devterminal"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 11
-        versionName = "0.9.1"
+        versionCode = 12
+        versionName = "0.9.2"
         vectorDrawables { useSupportLibrary = true }
+        // 原生 CPython 引擎：只打 arm64（当前覆盖绝大多数 Android 设备）
+        ndk { abiFilters += "arm64-v8a" }
     }
+
+    // 原生 CPython（PEP 738）：jniLibs 里的 libpython3.13.so / libpybridge.so
+    // 由 NDK clang 手动编译后放入 src/main/jniLibs/arm64-v8a，不走 externalNativeBuild，
+    // 避免构建机下载 CMake 的不确定性
+    ndkVersion = "27.3.13750724"
 
     buildTypes {
         release {
