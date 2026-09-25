@@ -43,6 +43,8 @@ import com.devterminal.ui.components.SectionLabel
 import com.devterminal.ui.theme.Dimens
 import com.devterminal.ui.theme.faint
 import com.devterminal.ui.theme.muted
+import com.devterminal.ui.theme.success
+import com.devterminal.ui.theme.warning
 
 /**
  * 左侧项目文件树。
@@ -66,6 +68,8 @@ fun FileTree(
     onFileLongPress: (FileNode) -> Unit,
     onNewFile: () -> Unit = {},
     onNewFolder: () -> Unit = {},
+    /** P2-7：git 变更 path→状态码（M/A/??）。空则不显示状态点。 */
+    gitStatus: Map<String, String> = emptyMap(),
     modifier: Modifier = Modifier
 ) {
     val cs = MaterialTheme.colorScheme
@@ -105,7 +109,8 @@ fun FileTree(
                         expanded = expanded,
                         selectedPath = selectedPath,
                         onFileClick = onFileClick,
-                        onFileLongPress = onFileLongPress
+                        onFileLongPress = onFileLongPress,
+                        gitStatus = gitStatus
                     )
                 }
             }
@@ -121,7 +126,8 @@ private fun TreeNode(
     expanded: MutableMap<String, Boolean>,
     selectedPath: String?,
     onFileClick: (FileNode) -> Unit,
-    onFileLongPress: (FileNode) -> Unit
+    onFileLongPress: (FileNode) -> Unit,
+    gitStatus: Map<String, String> = emptyMap()
 ) {
     val cs = MaterialTheme.colorScheme
     val isOpen = expanded[node.path] ?: false
@@ -184,6 +190,22 @@ private fun TreeNode(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+        // P2-7：文件旁的 git 状态小标（M 修改 / ?? 新增未跟踪 / A 已加入暂存）
+        if (!node.isDirectory) {
+            gitStatus[node.path]?.let { code ->
+                val dotColor = when {
+                    code.startsWith("??") -> cs.secondary
+                    code.startsWith("A") -> cs.success
+                    else -> cs.warning
+                }
+                MonoText(
+                    code,
+                    color = dotColor,
+                    fontSize = 9,
+                    modifier = Modifier.padding(end = 2.dp)
+                )
+            }
+        }
         // 折叠的目录给出文件数量，不用展开就能判断值不值得点
         if (node.isDirectory && !isOpen && node.children.isNotEmpty()) {
             MonoText(
@@ -196,7 +218,7 @@ private fun TreeNode(
     }
     if (node.isDirectory && isOpen) {
         node.children.forEach { child ->
-            TreeNode(child, depth + 1, expanded, selectedPath, onFileClick, onFileLongPress)
+            TreeNode(child, depth + 1, expanded, selectedPath, onFileClick, onFileLongPress, gitStatus)
         }
     }
 }

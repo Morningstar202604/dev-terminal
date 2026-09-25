@@ -33,9 +33,9 @@ import java.io.File
 /**
  * 实时预览面板（编辑器分屏的下半区）：Markdown / HTML 渲染结果。
  *
- * 为什么用独立 WebView 而不是复用 Pyodide 引擎的 WebView：
- * 那个 WebView 装着 9MB 解释器与虚拟文件系统，预览只需要渲染静态 HTML，
- * 复用会互相拖累（预览刷新会打断执行状态），各用各的最省心。
+ * 为什么用独立 WebView：
+ * 预览只需要渲染静态 Markdown / HTML，与执行引擎互不干扰，
+ * 预览刷新不会打断正在运行的程序，各用各的最省心。
  *
  * 刷新策略：外层用 collectLatest + delay 做防抖，这里收到新 html 就整体重载。
  * loadDataWithBaseURL 的 baseURL 传 null——预览不需要相对路径解析能力，

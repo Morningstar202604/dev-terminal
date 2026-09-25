@@ -212,10 +212,6 @@ fun EditorScreen(vm: EditorViewModel) {
     /** 全局搜索关键词；rememberSaveable 让横竖屏切换不丢已输入的查询词 */
     var gsearchQuery by rememberSaveable { mutableStateOf("") }
 
-    /** P1-3：抽屉里「+ 新建文件」命名弹框 */
-    var showNewFileDialog by remember { mutableStateOf(false) }
-    var newFileName by remember { mutableStateOf("") }
-
     // SAF：导入任意文件到项目
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -364,25 +360,11 @@ fun EditorScreen(vm: EditorViewModel) {
                         onFileLongPress = { node -> overlay = Overlay.FileAction(node.path) },
                         onNewFile = { overlay = Overlay.NewFile },
                         onNewFolder = { overlay = Overlay.NewFolder },
+                        // P2-7：git 变更映射成 path→状态码喂给文件树
+                        gitStatus = ui.gitStatus?.changes
+                            ?.associate { it.path to it.statusCode }.orEmpty(),
                         modifier = Modifier.weight(1f)
                     )
-
-                    // P1-3：新建空白文件入口（原先 newFile() 是死代码）
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                newFileName = ""
-                                showNewFileDialog = true
-                            }
-                            .padding(horizontal = Dimens.gutter, vertical = Dimens.sm),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Filled.Add, null, tint = cs.muted, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(Dimens.sm))
-                        Text("新建文件", style = MaterialTheme.typography.labelMedium,
-                            color = cs.muted)
-                    }
 
                     Hairline()
                     // ---------- 动作九宫格 ----------
@@ -803,6 +785,11 @@ fun EditorScreen(vm: EditorViewModel) {
             onInputChange = vm::onAiInputChanged,
             onSend = vm::sendAiInput,
             onQuick = vm::aiQuick,
+            onInsertCode = { code ->
+                // P2-3：把 AI 生成的代码块插入当前编辑器光标处
+                vm.insertSymbol("\n$code\n")
+                closeOverlay()
+            },
             onDismiss = ::closeOverlay
         )
     }
@@ -977,7 +964,7 @@ private fun EditorEmptyState(
                 if (hasProject) {
                     "从左侧文件树点开任意文件即可编辑，底部面板会显示运行结果"
                 } else {
-                    "Python 解释器（Pyodide/WASM）、numpy/pandas/matplotlib、Git 都已内置，离线随时随地跑代码"
+                    "原生 CPython 3.13.9 标准库、Git 都已内置，离线随时随地跑代码"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = cs.muted,

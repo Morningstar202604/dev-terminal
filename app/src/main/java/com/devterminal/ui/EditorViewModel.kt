@@ -131,8 +131,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * 真离线执行引擎：原生 CPython（PEP 738 官方 Android 支持，
      * libpython 随 APK 打包，零外部依赖）。引擎切换对 UI 透明（RunEngine 接口）。
+     *
+     * P1-2：延迟到 prepareEnvironment() 内构造。缺 .so / 错 ABI / 缺 stdlib.zip 时
+     * EngineProvider.create 会抛 IllegalStateException；放字段初始化器会在 ViewModel
+     * 构造期直接闪退，走不到 MissingToolchainScreen。这里改 lateinit + runCatching 兜底。
      */
-    private val engine: RunEngine = EngineProvider.create(context)
+    private lateinit var engine: RunEngine
     private val projects = ProjectManager(installer)
     private val settingsStore = com.devterminal.settings.SettingsStore(context)
 
@@ -143,6 +147,9 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     private var currentProject: File? = null
 
     private val git = GitManager()
+
+    /** P2-5：光标持久化节流 job，连续移动时取消上一次 */
+    private var cursorSaveJob: kotlinx.coroutines.Job? = null
 
     init {
         prepareEnvironment()
@@ -159,6 +166,21 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                     envState = EnvState.ERROR,
                     envMessage = "工作目录初始化失败",
                     message = "无法创建应用私有目录",
+                    messageSeq = it.messageSeq + 1
+                ) }
+                return@launch
+            }
+
+            // P1-2：在协程内构造引擎，构造失败（缺 .so/错 ABI/缺 stdlib.zip）不闪退，
+            // 而是置 ERROR 态，由 MissingToolchainScreen + 重试按钮接管。
+            val engineOk = withContext(Dispatchers.IO) {
+                runCatching { engine = EngineProvider.create(context) }.isSuccess
+            }
+            if (!engineOk) {
+                _ui.update { it.copy(
+                    envState = EnvState.ERROR,
+                    envMessage = "Python 运行时加载失败",
+                    message = "原生 CPython 运行时初始化失败，请确认 APK 完整安装后重试。",
                     messageSeq = it.messageSeq + 1
                 ) }
                 return@launch
@@ -266,6 +288,11 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     fun openProject(dir: File) {
         currentProject = dir
+        // P2-4：切换项目清空已开 Tab / 当前文件，与 newProject() 行为一致，
+        // 避免上一个项目的 Tab 仍指向旧路径。
+        _ui.update {
+            it.copy(openTabs = emptyList(), currentFile = null, editorText = "", dirty = false)
+        }
         refreshTree()
         saveSession()
     }
@@ -392,6 +419,14 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun launchRun(file: File) {
+        // P1-2：引擎构造失败时不运行，避免 lateinit 未初始化抛异常
+        if (!::engine.isInitialized) {
+            _ui.update { it.copy(
+                message = "运行时未就绪，无法运行",
+                messageSeq = it.messageSeq + 1
+            ) }
+            return
+        }
         val language = inferLanguage(file)
         val projectDir = currentProject ?: file.parentFile ?: file
         _ui.update { it.copy(
@@ -701,6 +736,18 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     /** 编辑器光标变化（行、列，从 0 计） */
     fun onCursorChanged(line: Int, column: Int) {
         _ui.update { it.copy(cursorLine = line + 1, cursorColumn = column + 1) }
+        // P2-5：节流持久化光标——1.5s 内连续移动只落盘最后一次，供冷启动恢复。
+        cursorSaveJob?.cancel()
+        cursorSaveJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(1500L)
+            saveCursor()
+        }
+    }
+
+    /** 把当前光标位置（UiState 中已为 1 基）写入 SettingsStore */
+    fun saveCursor() {
+        val st = _ui.value
+        runCatching { settingsStore.saveCursor(st.cursorLine, st.cursorColumn) }
     }
 
     // ---------- 符号栏 ----------
@@ -930,20 +977,38 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(aiBusy = true, aiMessages = history + AiClient.ChatMessage("user", prompt))
         }
         viewModelScope.launch {
-            val reply = withContext(Dispatchers.IO) {
-                runCatching {
-                    AiClient(_ui.value.settings).chat(
-                        AiClient.SYSTEM_PROMPT,
-                        history.takeLast(6),
-                        fileContext
-                    )
-                }.getOrElse { e -> "⚠️ ${e.message ?: "请求失败"}" }
+            // P2-2：改流式输出——先放一个空 assistant 气泡，逐段 append，不再阻塞等整段返回。
+            _ui.update { it.copy(aiMessages = it.aiMessages + AiClient.ChatMessage("assistant", "")) }
+            val aiClient = AiClient(_ui.value.settings)
+            val sb = StringBuilder()
+            runCatching {
+                aiClient.chatStream(AiClient.SYSTEM_PROMPT, history.takeLast(6), fileContext)
+                    .collect { chunk ->
+                        sb.append(chunk)
+                        _ui.update { st ->
+                            st.copy(aiMessages = st.aiMessages.withLast(
+                                AiClient.ChatMessage("assistant", sb.toString())
+                            ))
+                        }
+                    }
+            }.onFailure { e ->
+                // 流式失败也保留已收到的部分，再追一条错误提示
+                if (sb.isEmpty()) sb.append("⚠️ ${e.message ?: "请求失败"}")
             }
-            _ui.update {
-                it.copy(aiBusy = false, aiMessages = it.aiMessages + AiClient.ChatMessage("assistant", reply))
+            _ui.update { st ->
+                st.copy(
+                    aiBusy = false,
+                    aiMessages = st.aiMessages.withLast(
+                        AiClient.ChatMessage("assistant", sb.toString().ifEmpty { "（无响应）" })
+                    )
+                )
             }
         }
     }
+
+    /** 替换 aiMessages 列表的最后一条（流式追加用）；空列表原样返回 */
+    private fun List<AiClient.ChatMessage>.withLast(m: AiClient.ChatMessage): List<AiClient.ChatMessage> =
+        if (isEmpty()) this else dropLast(1) + m
 
     // ---------- 全局搜索（v0.3） ----------
 

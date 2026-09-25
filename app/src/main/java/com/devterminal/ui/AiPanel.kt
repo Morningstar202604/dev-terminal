@@ -2,6 +2,7 @@ package com.devterminal.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -54,6 +55,7 @@ fun AiPanelDialog(
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
     onQuick: (String) -> Unit,
+    onInsertCode: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val listState = rememberLazyListState()
@@ -86,7 +88,7 @@ fun AiPanelDialog(
                 // 消息列表填满固定高度 Box：原先只 fillMaxWidth，超长对话会被 Box 直接裁掉
                 LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
                     items(messages) { m ->
-                        Bubble(m)
+                        Bubble(m, onInsertCode)
                         Spacer(Modifier.height(Dimens.sm))
                     }
                     if (busy) {
@@ -139,7 +141,7 @@ fun AiPanelDialog(
 }
 
 @Composable
-private fun Bubble(m: AiClient.ChatMessage) {
+private fun Bubble(m: AiClient.ChatMessage, onInsertCode: (String) -> Unit) {
     val isUser = m.role == "user"
     Row(
         Modifier.fillMaxWidth(),
@@ -162,11 +164,35 @@ private fun Bubble(m: AiClient.ChatMessage) {
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)
                 )
             } else {
-                MonoText(
-                    m.content,
-                    fontSize = 12,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)
-                )
+                // P2-3：把 assistant 回答按 ``` 拆成散文段 / 代码段；代码段带「插入」按钮。
+                // 流式时最后一段可能还没收尾，奇数位同样按代码块渲染。
+                Column(Modifier.padding(vertical = 4.dp)) {
+                    m.content.split("```").forEachIndexed { i, raw ->
+                        if (i % 2 == 1) {
+                            // 去掉首行语言标注（如 ```python）
+                            val code = raw.trimStart().substringAfter("\n", "").trimEnd()
+                            if (code.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Spacer(Modifier.weight(1f))
+                                    TextButton(onClick = { onInsertCode(code) }) {
+                                        Text("插入", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                                MonoText(
+                                    code,
+                                    fontSize = 12,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                )
+                            }
+                        } else if (raw.isNotBlank()) {
+                            Text(
+                                raw.trim(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
     }

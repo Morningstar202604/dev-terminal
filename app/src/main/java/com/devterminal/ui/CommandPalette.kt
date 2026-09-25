@@ -69,7 +69,7 @@ data class Command(
 fun CommandPalette(
     commands: List<Command>,
     onDismiss: () -> Unit,
-    /** 「最近打开」的文件项；空则不显示该分组。query 非空时自动隐藏。 */
+    /** 「最近打开」的最近项目项；空则不显示该分组。query 非空时自动隐藏。 */
     recent: List<Command> = emptyList()
 ) {
     var query by remember { mutableStateOf("") }

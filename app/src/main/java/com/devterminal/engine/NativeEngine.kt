@@ -92,7 +92,8 @@ class NativeEngine(private val context: Context) : RunEngine {
                             zf.getInputStream(e).use { src -> target.outputStream().use { dst -> src.copyTo(dst) } }
                         }
                         done++
-                        val bucket = (done * 10L / total).toInt()  // 每 10% 一个桶
+                        // 每 10% 一个桶回调一次；total==0 时不做除法
+                        val bucket = if (total > 0) (done * 10L / total).toInt() else 10
                         if (bucket != lastBucket) {
                             lastBucket = bucket
                             onProgress?.invoke(done, total)
@@ -142,6 +143,12 @@ class NativeEngine(private val context: Context) : RunEngine {
         if (!ok) throw IllegalStateException("原生 Python 解释器初始化失败")
     }
 
+    /**
+     * 后台预热（无进度回调）。
+     * 已被带进度的 [prepareEnvironment] 取代；保留是为兼容仍在调用旧接口的 UI，
+     * 新代码请改用 suspend prepareEnvironment(onProgress) 以接入解压进度。
+     */
+    @Deprecated("改用 prepareEnvironment(onProgress) 以获得解压进度回调", ReplaceWith("prepareEnvironment { _, _ -> }"))
     override fun warmup() {
         Thread {
             runCatching { ensureInitialized() }

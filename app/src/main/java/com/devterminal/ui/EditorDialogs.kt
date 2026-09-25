@@ -341,13 +341,20 @@ fun RunConfigDialog(
             placeholder = "如: --name \"hello world\" -v"
         )
         Spacer(Modifier.height(Dimens.lg))
-        SectionLabel("Java 主类（留空自动探测）")
+        SectionLabel("Java 主类（暂未支持）")
         Spacer(Modifier.height(Dimens.sm))
         QuietTextField(
             value = mainClass,
             onValueChange = onMainClassChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = "如: com.example.Main"
+            placeholder = "如: com.example.Main",
+            enabled = false
+        )
+        Spacer(Modifier.height(Dimens.sm))
+        Text(
+            "当前引擎仅执行 Python；Java 运行能力后续开放，此项暂不生效。",
+            style = MaterialTheme.typography.labelSmall,
+            color = cs.faint
         )
         Spacer(Modifier.height(Dimens.md))
         Text(
@@ -551,6 +558,8 @@ fun SwitchProjectDialog(
     onDismiss: () -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
+    // P2-8：长按删项目先二次确认，避免误删整目录
+    var confirmDelete by remember { mutableStateOf<java.io.File?>(null) }
     QuietDialog(onDismiss = onDismiss, title = "项目") {
         if (projects.isEmpty()) {
             QuietHint("还没有项目。")
@@ -563,7 +572,7 @@ fun SwitchProjectDialog(
                         .clip(RoundedCornerShape(12.dp))
                         .combinedClickable(
                             onClick = { onSelect(p) },
-                            onLongClick = { if (!isCurrent) onDelete(p) }
+                            onLongClick = { if (!isCurrent) confirmDelete = p }
                         )
                         .padding(horizontal = 6.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -593,6 +602,22 @@ fun SwitchProjectDialog(
             Icon(Icons.Filled.Add, null, tint = cs.primary, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
             Text("新建项目", style = MaterialTheme.typography.labelLarge, color = cs.primary)
+        }
+    }
+
+    // P2-8：删除确认弹层（覆盖在项目列表之上）
+    confirmDelete?.let { target ->
+        QuietDialog(
+            onDismiss = { confirmDelete = null },
+            title = "删除项目",
+            confirmLabel = "删除",
+            onConfirm = { onDelete(target); confirmDelete = null }
+        ) {
+            Text(
+                "确定删除项目「${target.name}」？其下所有文件将被永久删除，此操作不可恢复。",
+                style = MaterialTheme.typography.bodySmall,
+                color = cs.muted
+            )
         }
     }
 }
@@ -633,7 +658,9 @@ private fun scanBuiltin(context: android.content.Context): BuiltinLibs {
             }?.sorted() ?: emptyList()
     }.getOrDefault(emptyList())
     val pure = runCatching {
-        File(context.filesDir, "lib/python3.13/site-packages").listFiles()
+        // 与引擎实际挂载路径一致（pybridge.c / NativeEngine）：
+        // filesDir/python-stdlib/lib/python3.13/site-packages
+        File(context.filesDir, "python-stdlib/lib/python3.13/site-packages").listFiles()
             ?.filter { it.isDirectory }?.map { it.name }?.sorted() ?: emptyList()
     }.getOrDefault(emptyList())
     return BuiltinLibs(extensions, pure)
@@ -654,7 +681,8 @@ private fun importPurePythonPackage(context: android.content.Context, uri: Uri):
             if (n.endsWith(".so") || n.endsWith(".wasm") || n.endsWith(".dll") ||
                 n.endsWith(".pyd") || n.contains("pyodide")) return false
         }
-        val dest = File(context.filesDir, "lib/python3.13/site-packages").apply { mkdirs() }
+        // 解压到引擎实际挂载的 site-packages 目录
+        val dest = File(context.filesDir, "python-stdlib/lib/python3.13/site-packages").apply { mkdirs() }
         val eit = zf.entries()
         while (eit.hasMoreElements()) {
             val e = eit.nextElement()

@@ -184,8 +184,9 @@ object Templates {
         )
     )
 
-    // Java 模板保留代码备查，但不进 all——Pyodide/WASM 沙箱跑不了 JVM，
-    // 放出来用户点了必报错。等未来接入原生 JDK 工具链再恢复。
+    // Java 模板（JAVA_HELLO / JAVA_MULTI）保留定义备查，但不进 all——
+    // 当前唯一运行时是 NativeEngine（原生 CPython，只 execFile .py），未实现 Java
+    // 编译/运行链路，放出来用户选了跑不了。待未来接入原生 JDK/Java 运行时再恢复。
     val all: List<ProjectTemplate> = listOf(
         PYTHON_HELLO, PYTHON_INTERACTIVE, PYTHON_MULTI, PYTHON_DATA
     )
