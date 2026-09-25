@@ -33,8 +33,13 @@ object CompletionProvider {
         "collections", "itertools", "functools", "typing"
     )
 
-    /** 常用第三方库（离线工具链预装的） */
-    private val PY_THIRD_PARTY = listOf("numpy", "pandas", "matplotlib", "flask", "requests")
+    /**
+     * 常见第三方库名（仅作 import 补全提示，**未随 APK 预装**）。
+     * 离线环境只带 Python 标准库；要用这些库，用户需自行把对应 arm64 wheel
+     * 放进项目目录或安装到 site-packages。这里不补全 numpy/pandas/matplotlib，
+     * 避免误导用户以为它们开箱即用。
+     */
+    private val PY_THIRD_PARTY = listOf("flask", "requests")
 
     private val PY_MODULE_METHODS = mapOf(
         "math" to listOf("sqrt", "pow", "floor", "ceil", "pi", "e", "sin", "cos", "tan", "log", "exp"),
@@ -117,7 +122,7 @@ object CompletionProvider {
         PY_KEYWORDS.forEach { add(Item(it, Kind.KEYWORD, "关键字")) }
         PY_BUILTINS.forEach { add(Item(it, Kind.BUILTIN, "内置函数")) }
         PY_MODULES.forEach { add(Item(it, Kind.MODULE, "标准库")) }
-        PY_THIRD_PARTY.forEach { add(Item(it, Kind.MODULE, "第三方库")) }
+        PY_THIRD_PARTY.forEach { add(Item(it, Kind.MODULE, "第三方库·需自装")) }
         PY_MODULE_METHODS.forEach { (mod, methods) ->
             methods.forEach { add(Item(it, Kind.METHOD, "${mod} 模块")) }
         }

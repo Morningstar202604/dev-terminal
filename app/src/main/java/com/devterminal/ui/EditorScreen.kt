@@ -26,16 +26,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.outlined.MenuOpen
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.HealthAndSafety
 import androidx.compose.material.icons.outlined.Info
@@ -54,6 +58,8 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -88,7 +94,10 @@ import com.devterminal.ui.components.ActionTile
 import com.devterminal.ui.components.rememberHaptics
 import com.devterminal.ui.components.Hairline
 import com.devterminal.ui.components.MonoText
+import com.devterminal.ui.components.QuietDialog
+import com.devterminal.ui.components.QuietHint
 import com.devterminal.ui.components.QuietIconButton
+import com.devterminal.ui.components.QuietTextField
 import com.devterminal.ui.components.SectionLabel
 import com.devterminal.ui.theme.Dimens
 import com.devterminal.ui.theme.Motion
@@ -129,7 +138,6 @@ private val overlaySaver = run {
         Named("runConfig", Overlay.RunConfig),
         Named("settings", Overlay.Settings),
         Named("about", Overlay.About),
-        Named("onboarding", Overlay.Onboarding),
     )
     mapSaver(
         save = { o ->
@@ -197,6 +205,10 @@ fun EditorScreen(vm: EditorViewModel) {
     /** 全局搜索关键词；rememberSaveable 让横竖屏切换不丢已输入的查询词 */
     var gsearchQuery by rememberSaveable { mutableStateOf("") }
 
+    /** P1-3：抽屉里「+ 新建文件」命名弹框 */
+    var showNewFileDialog by remember { mutableStateOf(false) }
+    var newFileName by remember { mutableStateOf("") }
+
     // SAF：导入任意文件到项目
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -207,14 +219,27 @@ fun EditorScreen(vm: EditorViewModel) {
         ActivityResultContracts.CreateDocument("text/plain")
     ) { uri -> uri?.let { vm.exportCurrentFile(it) } }
 
-    // Android 13+ 不申请通知权限，运行时的前台服务通知会被系统静默吞掉，
-    // 用户既看不到「代码运行中」，也更容易被后台策略杀进程。
+    // Android 13+ 通知权限：先给一句说明（Snackbar +「允许」），用户点允许才弹系统权限框。
+    // 用独立 SharedPreferences 记「已问过」，不与加密改造中的 SettingsStore 冲突。
     val notifLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { }
+    ) { /* 无论授予与否都不再追问 */ }
+    val notifPrefs = remember {
+        context.getSharedPreferences("devterminal_ui", android.content.Context.MODE_PRIVATE)
+    }
     LaunchedEffect(ui.envState) {
-        if (ui.envState == EnvState.READY && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        if (ui.envState == EnvState.READY && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+            && !notifPrefs.getBoolean("notif_asked", false)
+        ) {
+            notifPrefs.edit().putBoolean("notif_asked", true).apply()
+            val r = snackbar.showSnackbar(
+                message = "允许通知，才能在后台保持代码运行",
+                actionLabel = "允许",
+                duration = SnackbarDuration.Long
+            )
+            if (r == SnackbarResult.ActionPerformed) {
+                notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 
@@ -236,6 +261,17 @@ fun EditorScreen(vm: EditorViewModel) {
         }
     }
 
+    // P3-17：会话恢复后，ViewModel 下发的光标定位请求 → 转成编辑器 scrollToLine
+    LaunchedEffect(ui.restoreCursorSeq) {
+        if (ui.restoreCursorSeq > 0) {
+            scrollToLine = ScrollToLineRequest(
+                line = ui.restoreCursorLine,
+                seq = ui.restoreCursorSeq,
+                col = ui.restoreCursorCol
+            )
+        }
+    }
+
     // 切后台 / 系统回收前自动保存：任何已发布编辑器的数据安全底线
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -248,11 +284,16 @@ fun EditorScreen(vm: EditorViewModel) {
 
     // 返回键：按「由内到外」的顺序逐层关闭——
     // 先收查找条，再收抽屉，最后才是退出 App。原先只处理了前两者。
-    BackHandler(enabled = ui.findVisible || drawerState.isOpen || overlay != Overlay.None) {
+    // P1-2：环境准备 / 工具链缺失期间也吞掉返回键，避免冷启动准备中按返回直接退出 App。
+    BackHandler(
+        enabled = ui.findVisible || drawerState.isOpen || overlay != Overlay.None
+            || ui.envState == EnvState.PREPARING || ui.envState == EnvState.ERROR
+    ) {
         when {
             ui.findVisible -> vm.showFind(false)
             drawerState.isOpen -> scope.launch { drawerState.close() }
             overlay != Overlay.None -> closeOverlay()
+            // PREPARING / ERROR：什么都不做，吞掉返回
         }
     }
 
@@ -316,6 +357,23 @@ fun EditorScreen(vm: EditorViewModel) {
                         onFileLongPress = { node -> overlay = Overlay.FileAction(node.path) },
                         modifier = Modifier.weight(1f)
                     )
+
+                    // P1-3：新建空白文件入口（原先 newFile() 是死代码）
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                newFileName = ""
+                                showNewFileDialog = true
+                            }
+                            .padding(horizontal = Dimens.gutter, vertical = Dimens.sm),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.Add, null, tint = cs.muted, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(Dimens.sm))
+                        Text("新建文件", style = MaterialTheme.typography.labelMedium,
+                            color = cs.muted)
+                    }
 
                     Hairline()
                     // ---------- 动作九宫格 ----------
@@ -477,7 +535,8 @@ fun EditorScreen(vm: EditorViewModel) {
                     tabs = ui.openTabs,
                     activePath = ui.currentFile?.absolutePath,
                     onSelect = { vm.openFile(it) },
-                    onClose = { vm.closeTab(it) }
+                    onClose = { vm.closeTab(it) },
+                    dirtyPaths = if (ui.dirty) setOfNotNull(ui.currentFile?.absolutePath) else emptySet()
                 )
                 if (ui.findVisible) {
                     FindBar(
@@ -517,6 +576,8 @@ fun EditorScreen(vm: EditorViewModel) {
                     insertSignal = ui.insertSignal,
                     insertText = ui.insertText,
                     backspaceSignal = ui.backspaceSignal,
+                    undoSignal = ui.undoSignal,
+                    redoSignal = ui.redoSignal,
                     findRequest = if (ui.findVisible && ui.findMatches.isNotEmpty()) FindRequest(
                         pos = ui.findMatches.getOrNull(ui.findIndex) ?: 0,
                         length = ui.findQuery.length,
@@ -540,10 +601,14 @@ fun EditorScreen(vm: EditorViewModel) {
                         modifier = Modifier.fillMaxWidth().weight(1f)
                     )
                 }
-                SymbolBar(
-                    onInsert = { vm.insertSymbol(it) },
-                    onBackspace = { vm.backspaceSymbol() }
-                )
+                // P3-16：预览分屏打开时隐藏符号栏，给左右分屏让出纵向空间；
+                // 无文件打开时整个 else 分支不渲染，符号栏自然隐藏。
+                if (!ui.previewVisible) {
+                    SymbolBar(
+                        onInsert = { vm.insertSymbol(it) },
+                        onBackspace = { vm.backspaceSymbol() }
+                    )
+                }
                 }
             }
 
@@ -558,6 +623,8 @@ fun EditorScreen(vm: EditorViewModel) {
                     onInputSend = { vm.sendInput(ui.inputDraft) },
                     onClear = vm::clearOutput,
                     onRerun = vm::runCurrent,
+                    onStop = { vm.stopRun() },
+                    onRequestInput = { vm.openInput() },
                     onShare = {
                         // 通过系统分享把运行结果发出去（聊天/笔记/Issue 都方便）
                         val text = ui.output.joinToString("\n")
@@ -658,8 +725,15 @@ fun EditorScreen(vm: EditorViewModel) {
 
     // ---------- 命令面板：所有动作的搜索入口 ----------
     if (overlay == Overlay.Palette) {
+        // P2-7：最近打开的项目，按 mtime 取前 8；无项目则空列表不显示该分组
+        val recent = runCatching {
+            vm.recentProjects().map { dir ->
+                Command("recent-${dir.absolutePath}", dir.name, dir.absolutePath,
+                    Icons.Filled.Folder) { vm.openProject(java.io.File(dir.absolutePath)) }
+            }
+        }.getOrDefault(emptyList())
         CommandPalette(
-            commands = buildCommands(vm, ui,
+            commands = buildCommands(vm, ui, context,
                 onCommand = { cmd -> when (cmd) {
                     "diag" -> overlay = Overlay.Diagnostics
                     "settings" -> overlay = Overlay.Settings
@@ -673,6 +747,7 @@ fun EditorScreen(vm: EditorViewModel) {
                     "export" -> exportLauncher.launch(vm.suggestedExportName())
                 } }
             ),
+            recent = recent,
             onDismiss = ::closeOverlay
         )
     }
@@ -776,6 +851,42 @@ fun EditorScreen(vm: EditorViewModel) {
 
     if (overlay == Overlay.About) {
         AboutDialog(onDismiss = ::closeOverlay)
+    }
+
+    // P1-3：新建空白文件命名弹框
+    if (showNewFileDialog) {
+        QuietDialog(
+            onDismiss = { showNewFileDialog = false },
+            title = "新建文件",
+            confirmLabel = "创建",
+            onConfirm = {
+                val name = newFileName.trim()
+                if (name.isNotEmpty()) {
+                    vm.newFile(name)
+                    showNewFileDialog = false
+                    newFileName = ""
+                    scope.launch { drawerState.close() }
+                }
+            }
+        ) {
+            QuietTextField(
+                value = newFileName,
+                onValueChange = { newFileName = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = "文件名，如 main.py",
+                imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                onImeAction = {
+                    val name = newFileName.trim()
+                    if (name.isNotEmpty()) {
+                        vm.newFile(name)
+                        showNewFileDialog = false
+                        newFileName = ""
+                    }
+                }
+            )
+            Spacer(Modifier.height(Dimens.sm))
+            QuietHint("仅保留字母/数字/下划线/中文；重名将直接打开已有文件")
+        }
     }
 }
 
@@ -947,7 +1058,7 @@ private fun MissingToolchainScreen(
             Text(message, style = MaterialTheme.typography.titleMedium, color = cs.error)
             Spacer(Modifier.height(Dimens.md))
             Text(
-                "DevTerminal 的 Python 运行时（Pyodide / WebAssembly）随 APK 打包，装完即离线、无需任何下载。",
+                "DevTerminal 的原生 CPython 3.13.9（PEP 738, arm64-v8a）随 APK 打包，装完即离线、无需任何下载。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = cs.muted
             )
@@ -955,8 +1066,8 @@ private fun MissingToolchainScreen(
             SectionLabel("修复步骤")
             Spacer(Modifier.height(Dimens.sm))
             listOf(
-                "1. 确认构建时 assets/pyodide/ 已随 APK 打包",
-                "2. 确认 build.gradle.kts 已配置 noCompress += [\"wasm\", \"zip\"]",
+                "1. 确认 assets/python-stdlib.zip 已随 APK 打包",
+                "2. 确认 lib/arm64-v8a/libpython3.13.so 已随 APK 打包",
                 "3. 重新构建并安装 APK"
             ).forEach { step ->
                 MonoText(
@@ -985,12 +1096,25 @@ private fun MissingToolchainScreen(
 private fun buildCommands(
     vm: EditorViewModel,
     ui: UiState,
+    context: android.content.Context,
     onCommand: (String) -> Unit
 ): List<Command> = buildList {
     add(Command("run", "运行当前文件", ui.currentFile?.name ?: "未打开文件",
         Icons.Filled.PlayArrow) { vm.runCurrent() })
     add(Command("save", "保存当前文件", "写入磁盘",
         Icons.Filled.Save) { vm.save() })
+    add(Command("undo", "撤销", "编辑器撤销栈上一步",
+        Icons.AutoMirrored.Filled.Undo) { vm.undo() })
+    add(Command("redo", "重做", "编辑器重做栈下一步",
+        Icons.Filled.Redo) { vm.redo() })
+    add(Command("share", "分享当前文件", "以纯文本发送 ${ui.currentFile?.name ?: ""}".trim(),
+        Icons.Filled.Share) {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, ui.editorText)
+            }
+            runCatching { context.startActivity(Intent.createChooser(intent, "分享代码")) }
+        })
     add(Command("find", "查找 / 替换", "计数跳转 + 单个/全部替换",
         Icons.Filled.Search) { vm.showFind(true) })
     add(Command("gsearch", "全局搜索", "在所有项目文件中查找",

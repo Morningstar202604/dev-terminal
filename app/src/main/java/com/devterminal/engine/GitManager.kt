@@ -8,8 +8,7 @@ import java.io.File
  * Git 操作管理（JGit 版）。
  *
  * ## 为什么是 JGit
- * Pyodide（WebAssembly）架构下无法运行 git 原生二进制，旧的原生工具链方案
- * （441MB 外置包）也已废弃。JGit 是纯 Java 实现，随 APK 打包即用：
+ * JGit 是纯 Java 实现，无需系统 git 二进制，随 APK 打包即用：
  * init / status / commit / push / pull 全部在应用进程内完成，依旧零联网依赖
  * （push/pull 走用户配置的远程地址，与桌面端 git 同理）。
  *
@@ -132,8 +131,18 @@ class GitManager {
                 val cmd = g.pull().setRemote("origin")
                 credentials(remoteUrl)?.let { cmd.setCredentialsProvider(it) }
                 val result = cmd.call()
-                val merge = result.mergeResult?.mergeStatus?.toString() ?: "已完成"
-                "拉取完成（${hostOf(remoteUrl)}）· 合并：$merge"
+                val mergeStatus = result.mergeResult?.mergeStatus
+                if (mergeStatus == org.eclipse.jgit.api.MergeResult.MergeStatus.CONFLICTING) {
+                    // 合并冲突：列出冲突文件，提示用户手动解决后再提交
+                    val conflicts = runCatching { g.status().call().conflicting }
+                        .getOrDefault(emptySet())
+                    val listed = conflicts.joinToString("\n") { "- $it" }
+                    "⚠️ 拉取完成（${hostOf(remoteUrl)}）但存在合并冲突，" +
+                        "请手动解决以下文件后再提交：\n$listed"
+                } else {
+                    val merge = mergeStatus?.toString() ?: "已完成"
+                    "拉取完成（${hostOf(remoteUrl)}）· 合并：$merge"
+                }
             }
         }
     }

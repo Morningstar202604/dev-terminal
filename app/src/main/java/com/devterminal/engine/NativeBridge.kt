@@ -126,7 +126,7 @@ class NativeBridge {
     external fun attach(bridge: NativeBridge)
     external fun detach()
     external fun initialize(stdlibPath: String?, nativeLibDir: String?, crashLogPath: String?): Boolean
-    external fun execFile(path: String, workingDir: String, scriptDir: String): String?
+    external fun execFile(path: String, workingDir: String, scriptDir: String, args: Array<String>): String?
     external fun requestInterrupt()
     external fun shutdown()
 

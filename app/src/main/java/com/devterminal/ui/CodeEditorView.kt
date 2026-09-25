@@ -88,6 +88,10 @@ fun CodeEditorView(
     insertText: String? = null,
     /** 每次自增触发一次退格 */
     backspaceSignal: Long = 0,
+    /** 每次自增触发一次撤销（SoraEditor 内置撤销栈） */
+    undoSignal: Long = 0,
+    /** 每次自增触发一次重做 */
+    redoSignal: Long = 0,
     /** 查找跳转请求：pos 为全局字符偏移，requestId 变化即执行 */
     findRequest: FindRequest? = null,
     /**
@@ -179,6 +183,16 @@ fun CodeEditorView(
         }
     }
 
+    // 撤销 / 重做：走 SoraEditor 内置编辑历史栈
+    LaunchedEffect(undoSignal) {
+        if (undoSignal <= 0) return@LaunchedEffect
+        runCatching { editor.undo() }
+    }
+    LaunchedEffect(redoSignal) {
+        if (redoSignal <= 0) return@LaunchedEffect
+        runCatching { editor.redo() }
+    }
+
     // 查找跳转：把全局偏移换算成行列后移动光标并滚动到可见
     LaunchedEffect(findRequest?.requestId) {
         val req = findRequest ?: return@LaunchedEffect
@@ -193,13 +207,14 @@ fun CodeEditorView(
         }
     }
 
-    // 跳转到报错所在行：光标落到该行行首并滚动到可见
+    // 跳转到指定行（报错行跳到行首；会话恢复光标时带具体列）：滚动到可见
     LaunchedEffect(scrollToLine?.seq) {
         val req = scrollToLine ?: return@LaunchedEffect
         runCatching {
             val lineCount = editor.text.lineCount
             val line = req.line.coerceIn(0, (lineCount - 1).coerceAtLeast(0))
-            runCatching { editor.setSelection(line, 0) }
+            val col = req.col.coerceAtLeast(0)
+            runCatching { editor.setSelection(line, col) }
             runCatching { editor.ensureSelectionVisible() }
         }
     }

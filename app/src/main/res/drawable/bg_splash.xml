@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  冷启动窗口背景：避免从白屏淡入。
+  底层用 Quiet 规范的 slate-900（#0F172A），上层居中放 indigo 终端标识。
+  Compose 首帧渲染后 windowBackground 自然被覆盖，无需代码干预。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_bg" />
+    <item
+        android:gravity="center"
+        android:drawable="@drawable/ic_splash_logo" />
+</layer-list>

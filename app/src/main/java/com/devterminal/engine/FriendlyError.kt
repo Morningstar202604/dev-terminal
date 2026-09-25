@@ -20,8 +20,8 @@ object FriendlyError {
                     append("缺少模块")
                     if (mod != null) append("「$mod」") else append("")
                     append("。\n")
-                    append("离线环境只带 Python 标准库（Pyodide 内置）。要用第三方库，\n")
-                    append("需随 APK 打包对应的 Pyodide wheel，或改用带该库的构建。")
+                    append("离线环境只带 Python 标准库（原生 CPython 3.13.9）。要用第三方库，\n")
+                    append("需将对应 ABI（arm64-v8a）的 wheel 放入项目目录或安装到 site-packages。")
                 }
             }
 

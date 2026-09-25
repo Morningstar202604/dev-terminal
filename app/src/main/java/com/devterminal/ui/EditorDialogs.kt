@@ -257,7 +257,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
         }
         Spacer(Modifier.height(Dimens.md))
         Text(
-            "完全离线的安卓编程终端。内置 Pyodide（CPython 3.12 编译为 WebAssembly），" +
+            "完全离线的安卓编程终端。内置原生 CPython 3.13.9（PEP 738, arm64-v8a），" +
                 "装好即用，无需联网即可编写、运行 Python 代码。",
             style = MaterialTheme.typography.bodySmall,
             color = cs.muted
@@ -267,8 +267,8 @@ fun AboutDialog(onDismiss: () -> Unit) {
         Spacer(Modifier.height(Dimens.sm))
         listOf(
             "SoraEditor — LGPL-2.1（代码编辑器）",
-            "Pyodide — MPL-2.0（离线 Python 运行时）",
-            "CPython — PSF License",
+            "Python 3.13 — PSF License",
+            "NativeEngine — MIT",
             "Jetpack Compose — Apache-2.0",
             "AndroidX — Apache-2.0"
         ).forEach {
@@ -277,7 +277,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
         }
         Spacer(Modifier.height(Dimens.md))
         Text(
-            "离线 Python 能力由 Pyodide / CPython 提供，遵循其相应许可；" +
+            "离线 Python 能力由原生 CPython 3.13.9 提供，遵循 PSF 许可；" +
                 "SoraEditor 以 LGPL 授权，用户可自行替换该库。",
             style = MaterialTheme.typography.labelSmall,
             color = cs.faint

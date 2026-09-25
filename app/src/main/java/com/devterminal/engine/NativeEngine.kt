@@ -14,12 +14,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * 原生 Python 引擎（CPython 3.13 官方 Android 支持，PEP 738）。
+ * 原生 Python 引擎（CPython 3.13.9 官方 Android 支持，PEP 738）。
  *
- * 与 [PyodideEngine] 实现同一 [RunEngine] 接口，UI 层零改动切换。
+ * 实现 [RunEngine] 接口，UI 层零改动。
  *
- * 特性（对比 Pyodide/WASM）：
- * - 原生 ARM64 性能（不再有 1/10~1/50 的 WASM 降速）
+ * 特性：
+ * - 原生 ARM64 性能（arm64-v8a）
  * - 真实文件系统：脚本直接读写 App 私有目录，cwd = 项目目录
  * - stdin/stdout 在 Python 层桥接：input()/print() 天然可用
  * - 中断走 CPython 官方 Py_AddPendingCall：死循环可被 KeyboardInterrupt 终止
@@ -61,7 +61,7 @@ class NativeEngine(private val context: Context) : RunEngine {
         return true
     }
 
-    private fun ensureStdlib(): File {
+    private fun ensureStdlib(onProgress: ((Long, Long) -> Unit)? = null): File {
         // 标准库存放在 files/python-stdlib；不存在或校验失败时从 assets/python-stdlib.zip 解压
         val dest = File(context.filesDir, "python-stdlib")
         if (stdlibOk(dest)) return dest
@@ -77,8 +77,13 @@ class NativeEngine(private val context: Context) : RunEngine {
                 }
             }
             // P1-1：解压失败不删 zip、不返回半残目录，向上抛异常
+            // P2-7：按 ZipEntry 总数回调进度（每 10% 上报一次）
             try {
                 java.util.zip.ZipFile(zip).use { zf ->
+                    val total = zf.size().toLong()
+                    onProgress?.invoke(0L, total)
+                    var done = 0L
+                    var lastBucket = -1
                     zf.entries().asSequence().forEach { e ->
                         val target = File(dest, e.name)
                         if (e.isDirectory) { target.mkdirs() }
@@ -86,7 +91,14 @@ class NativeEngine(private val context: Context) : RunEngine {
                             target.parentFile?.mkdirs()
                             zf.getInputStream(e).use { src -> target.outputStream().use { dst -> src.copyTo(dst) } }
                         }
+                        done++
+                        val bucket = (done * 10L / total).toInt()  // 每 10% 一个桶
+                        if (bucket != lastBucket) {
+                            lastBucket = bucket
+                            onProgress?.invoke(done, total)
+                        }
                     }
+                    onProgress?.invoke(total, total)
                 }
             } catch (e: Exception) {
                 android.util.Log.e("NativeEngine", "stdlib 解压失败", e)
@@ -104,11 +116,11 @@ class NativeEngine(private val context: Context) : RunEngine {
         return dest
     }
 
-    private fun ensureInitialized(): Boolean {
+    private fun ensureInitialized(onProgress: ((Long, Long) -> Unit)? = null): Boolean {
         if (initialized) return true
         synchronized(initLock) {
             if (initialized) return true
-            val stdlib = ensureStdlib()
+            val stdlib = ensureStdlib(onProgress)
             // P0-1：传入 nativeLibraryDir（C 扩展 .so 所在）与 crash-native.log 路径
             val nativeLibDir = context.applicationInfo.nativeLibraryDir
             val crashLog = File(context.filesDir, "crash-native.log").absolutePath
@@ -125,7 +137,7 @@ class NativeEngine(private val context: Context) : RunEngine {
 
     override suspend fun prepareEnvironment(onProgress: (Long, Long) -> Unit) {
         onProgress(0L, 100L)
-        val ok = withContext(Dispatchers.IO) { ensureInitialized() }
+        val ok = withContext(Dispatchers.IO) { ensureInitialized(onProgress) }
         onProgress(100L, 100L)
         if (!ok) throw IllegalStateException("原生 Python 解释器初始化失败")
     }
@@ -150,6 +162,10 @@ class NativeEngine(private val context: Context) : RunEngine {
             busy.set(false); close(); return@callbackFlow
         }
 
+        // P2-8：首次 Py_Initialize 较慢，先给一行静音日志提示
+        if (!initialized) {
+            trySend(RunEvent.Log("首次运行正在预热解释器…"))
+        }
         // 首次运行前初始化解释器（预热过则秒过）
         if (!ensureInitialized()) {
             trySend(RunEvent.Failed("原生 Python 初始化失败，请检查 libpython 是否随 APK 打包"))
@@ -181,7 +197,8 @@ class NativeEngine(private val context: Context) : RunEngine {
 
         val job = launch(Dispatchers.IO) {
             // 跑在专用线程，Py_Initialize 已在 initialize() 完成（持 GIL 语义由 C 层管理）
-            val err = bridge.execFile(script.absolutePath, workingDir, scriptDir)
+            // P1-2：把命令行参数透传到 sys.argv[1:]
+            val err = bridge.execFile(script.absolutePath, workingDir, scriptDir, request.args.toTypedArray())
             // P2-1：无尾换行的最后一行残留在此 flush
             bridge.flushBuffers()
             if (err != null) {

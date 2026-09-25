@@ -1,7 +1,10 @@
 package com.devterminal.settings
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.res.Configuration
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 
 /**
  * 主题模式（三态）：跟随系统 / 浅色 / 深色。
@@ -46,6 +49,7 @@ data class AppSettings(
      * 不填就用不了。AI 属于可选的在线服务，与「离线执行 Python」无关。
      */
     val aiBaseUrl: String = DEFAULT_AI_BASE_URL,
+    /** 敏感：API Key，存加密 SharedPreferences */
     val aiApiKey: String = "",
     val aiModel: String = DEFAULT_AI_MODEL,
     /**
@@ -58,7 +62,7 @@ data class AppSettings(
     // ---------- Git ----------
     val gitUserName: String = "",
     val gitUserEmail: String = "",
-    /** 远程仓库地址（token 可内嵌在 URL 里，如 https://user:token@host/repo.git） */
+    /** 敏感：远程地址可能内嵌 token（https://user:token@host/repo.git），存加密 SharedPreferences */
     val gitRemoteUrl: String = ""
 ) {
     companion object {
@@ -72,11 +76,61 @@ data class AppSettings(
  *
  * 选择 SharedPreferences 而非 DataStore：本应用只有几个标量配置，
  * 没有必要为它引入 DataStore 的协程/Flow 复杂度和额外依赖。
+ *
+ * 敏感字段（AI API Key、内嵌 token 的 Git 远程地址）存入 EncryptedSharedPreferences
+ * （Android Keystore + AES256_GCM）；其余非敏感配置仍在明文 prefs。
+ * 旧版本明文存放的敏感字段在首次升级时自动迁移到加密 prefs 并删除明文副本。
  */
 class SettingsStore(context: Context) {
 
-    private val prefs = context.applicationContext
+    private val appContext = context.applicationContext
+
+    /** 非敏感配置：明文 SharedPreferences */
+    private val prefs = appContext
         .getSharedPreferences("devterminal_settings", Context.MODE_PRIVATE)
+
+    /**
+     * 敏感配置：加密 SharedPreferences。
+     * 极少数旧/定制 ROM 上 Keystore 不可用时回退到明文 prefs（至少不崩），
+     * 此时 [encryptedIsFallback] 为 true，跳过迁移。
+     */
+    private val encrypted: SharedPreferences = createEncrypted(appContext)
+    private val encryptedIsFallback: Boolean get() = encrypted === prefs
+
+    init {
+        migrateSensitiveFromPlaintext()
+    }
+
+    private fun createEncrypted(context: Context): SharedPreferences = runCatching {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        EncryptedSharedPreferences.create(
+            context,
+            "devterminal_encrypted",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }.getOrElse { prefs }
+
+    /** 旧版本把 aiApiKey / gitRemoteUrl 明文存在 devterminal_settings，升级时搬到加密 prefs。 */
+    private fun migrateSensitiveFromPlaintext() {
+        if (encryptedIsFallback) return
+        if (!prefs.contains(KEY_AI_KEY) && !prefs.contains(KEY_GIT_REMOTE)) return
+        runCatching {
+            if (prefs.contains(KEY_AI_KEY)) {
+                val v = prefs.getString(KEY_AI_KEY, "") ?: ""
+                encrypted.edit().putString(KEY_AI_KEY, v).apply()
+                prefs.edit().remove(KEY_AI_KEY).apply()
+            }
+            if (prefs.contains(KEY_GIT_REMOTE)) {
+                val v = prefs.getString(KEY_GIT_REMOTE, "") ?: ""
+                encrypted.edit().putString(KEY_GIT_REMOTE, v).apply()
+                prefs.edit().remove(KEY_GIT_REMOTE).apply()
+            }
+        }
+    }
 
     fun load(): AppSettings = AppSettings(
         themeMode = prefs.getString(KEY_THEME_MODE, null) ?: legacyThemeMode(),
@@ -87,13 +141,13 @@ class SettingsStore(context: Context) {
         editorTheme = prefs.getString(KEY_EDITOR_THEME, "auto") ?: "auto",
         aiBaseUrl = prefs.getString(KEY_AI_URL, AppSettings.DEFAULT_AI_BASE_URL)
             ?: AppSettings.DEFAULT_AI_BASE_URL,
-        aiApiKey = prefs.getString(KEY_AI_KEY, "") ?: "",
+        aiApiKey = encrypted.getString(KEY_AI_KEY, "") ?: "",
         aiModel = prefs.getString(KEY_AI_MODEL, AppSettings.DEFAULT_AI_MODEL)
             ?: AppSettings.DEFAULT_AI_MODEL,
         aiConfigured = prefs.getBoolean(KEY_AI_CONFIGURED, false),
         gitUserName = prefs.getString(KEY_GIT_NAME, "") ?: "",
         gitUserEmail = prefs.getString(KEY_GIT_EMAIL, "") ?: "",
-        gitRemoteUrl = prefs.getString(KEY_GIT_REMOTE, "") ?: ""
+        gitRemoteUrl = encrypted.getString(KEY_GIT_REMOTE, "") ?: ""
     )
 
     fun save(s: AppSettings) {
@@ -105,11 +159,14 @@ class SettingsStore(context: Context) {
             .putInt(KEY_OUTPUT_H, s.outputHeightDp)
             .putString(KEY_EDITOR_THEME, s.editorTheme)
             .putString(KEY_AI_URL, s.aiBaseUrl)
-            .putString(KEY_AI_KEY, s.aiApiKey)
             .putString(KEY_AI_MODEL, s.aiModel)
             .putBoolean(KEY_AI_CONFIGURED, s.aiConfigured)
             .putString(KEY_GIT_NAME, s.gitUserName)
             .putString(KEY_GIT_EMAIL, s.gitUserEmail)
+            .apply()
+        // 敏感字段写加密 prefs
+        encrypted.edit()
+            .putString(KEY_AI_KEY, s.aiApiKey)
             .putString(KEY_GIT_REMOTE, s.gitRemoteUrl)
             .apply()
     }
@@ -128,8 +185,21 @@ class SettingsStore(context: Context) {
         projectPath = prefs.getString(KEY_LAST_PROJECT, null),
         filePath = prefs.getString(KEY_LAST_FILE, null),
         tabPaths = prefs.getString(KEY_LAST_TABS, null)
-            ?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
+            ?.split("\n")?.filter { it.isNotBlank() } ?: emptyList(),
+        cursorLine = prefs.getInt(KEY_CURSOR_LINE, 0),
+        cursorCol = prefs.getInt(KEY_CURSOR_COL, 0)
     )
+
+    /**
+     * 单独保存光标位置（1 基行/列，0 表示未保存）。
+     * 与 [saveSession] 分开：切文件/暂停时 UI 可高频写光标，不污染项目/Tab 现场。
+     */
+    fun saveCursor(cursorLine: Int, cursorCol: Int) {
+        prefs.edit()
+            .putInt(KEY_CURSOR_LINE, cursorLine)
+            .putInt(KEY_CURSOR_COL, cursorCol)
+            .apply()
+    }
 
     /** 旧版只有深浅二选一（dark_theme 布尔）。首次升级到三态时把旧值迁到 themeMode。 */
     private fun legacyThemeMode(): String =
@@ -137,11 +207,13 @@ class SettingsStore(context: Context) {
             if (prefs.getBoolean(KEY_DARK, true)) ThemeModes.DARK else ThemeModes.LIGHT
         } else ThemeModes.DARK
 
-    /** 上一次会话的编辑现场 */
+    /** 上一次会话的编辑现场（cursorLine/cursorCol 为 1 基，0 表示无保存光标） */
     data class SessionSnapshot(
         val projectPath: String?,
         val filePath: String?,
-        val tabPaths: List<String>
+        val tabPaths: List<String>,
+        val cursorLine: Int = 0,
+        val cursorCol: Int = 0
     )
 
     private companion object {
@@ -162,6 +234,8 @@ class SettingsStore(context: Context) {
         const val KEY_GIT_NAME = "git_user_name"
         const val KEY_GIT_EMAIL = "git_user_email"
         const val KEY_GIT_REMOTE = "git_remote_url"
+        const val KEY_CURSOR_LINE = "cursor_line"
+        const val KEY_CURSOR_COL = "cursor_col"
     }
 }
 

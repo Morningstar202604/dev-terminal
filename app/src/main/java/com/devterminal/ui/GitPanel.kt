@@ -84,7 +84,7 @@ fun GitPanelDialog(
                 StatusDot(cs.error)
                 Spacer(Modifier.size(Dimens.sm))
                 Text(
-                    "Git 暂不可用：本版运行于 WebAssembly 架构，沙箱内无法运行 git 二进制；后续将通过 JGit（纯 Java）恢复。",
+                    "Git 由 JGit 纯 Java 实现，离线可用。当前目录未初始化为 Git 仓库。",
                     style = MaterialTheme.typography.bodySmall,
                     color = cs.error,
                     modifier = Modifier.weight(1f)

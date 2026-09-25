@@ -37,21 +37,21 @@ object Templates {
     val PYTHON_DATA = ProjectTemplate(
         id = "python-data",
         title = "Python 数据处理",
-        description = "用 numpy 做一段简单的统计计算",
+        description = "纯标准库 statistics 模块统计示例",
         language = Language.PYTHON,
         files = mapOf(
             "analyze.py" to """
                 # -*- coding: utf-8 -*-
-                # 依赖内置 numpy（离线工具链已预装）
-                import numpy as np
+                # 纯标准库示例：statistics 模块，离线开箱即用，无需安装第三方库
+                import statistics
 
                 def main():
-                    rng = np.random.default_rng(42)
-                    data = rng.normal(loc=50, scale=12, size=1000)
-                    print(f"样本数: {data.size}")
-                    print(f"均值:   {data.mean():.2f}")
-                    print(f"标准差: {data.std():.2f}")
-                    print(f"最大/最小: {data.max():.2f} / {data.min():.2f}")
+                    data = [52, 48, 55, 61, 49, 53, 58, 47, 60, 54, 57, 50, 62, 46, 59, 51]
+                    print(f"样本数: {len(data)}")
+                    print(f"均值:   {statistics.mean(data):.2f}")
+                    print(f"标准差: {statistics.stdev(data):.2f}")
+                    print(f"中位数: {statistics.median(data):.2f}")
+                    print(f"最小/最大: {min(data)} / {max(data)}")
 
                 if __name__ == "__main__":
                     main()

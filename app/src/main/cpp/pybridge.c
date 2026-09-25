@@ -46,6 +46,9 @@ static BridgeCtx g_ctx = {0};
 /* native crash 日志路径（由 initialize 注入，信号 handler 异步写入） */
 static char g_crash_log_path[PATH_MAX] = {0};
 
+/* P2-6：inittab 只允许注册一次（Py_Initialize 后再 AppendInittab 会报错）。 */
+static int g_dtbridge_registered = 0;
+
 /* ---------------- Python 侧桥接函数 ---------------- */
 
 static PyObject *bridge_output(PyObject *self, PyObject *args) {
@@ -54,8 +57,11 @@ static PyObject *bridge_output(PyObject *self, PyObject *args) {
     if (!PyArg_ParseTuple(args, "ss", &stream, &text)) return NULL;
     if (g_ctx.jvm && g_ctx.bridge) {
         JNIEnv *env = NULL;
+        jboolean needDetach = JNI_FALSE;
         if ((*g_ctx.jvm)->GetEnv(g_ctx.jvm, (void **)&env, JNI_VERSION_1_6) != JNI_OK) {
-            (*g_ctx.jvm)->AttachCurrentThread(g_ctx.jvm, &env, NULL);
+            if ((*g_ctx.jvm)->AttachCurrentThread(g_ctx.jvm, &env, NULL) == JNI_OK) {
+                needDetach = JNI_TRUE;
+            }
         }
         if (env) {
             jstring jStream = (*env)->NewStringUTF(env, stream);
@@ -64,6 +70,8 @@ static PyObject *bridge_output(PyObject *self, PyObject *args) {
             (*env)->DeleteLocalRef(env, jStream);
             (*env)->DeleteLocalRef(env, jText);
         }
+        /* P2-4：若本线程是 Attach 上来的，回调结束后必须 Detach，否则泄漏。 */
+        if (needDetach) (*g_ctx.jvm)->DetachCurrentThread(g_ctx.jvm);
     }
     Py_RETURN_NONE;
 }
@@ -256,8 +264,12 @@ Java_com_devterminal_engine_NativeBridge_initialize(
     }
     install_crash_handlers();
 
-    /* 注入桥模块：必须放在 Py_Initialize 之前，否则 inittab 不生效 */
-    if (PyImport_AppendInittab("dtbridge", module_init) != 0) return JNI_FALSE;
+    /* 注入桥模块：必须放在 Py_Initialize 之前，否则 inittab 不生效。
+     * P2-6：重复 initialize（如 release 后重建）时跳过，避免 AppendInittab 报错。 */
+    if (!g_dtbridge_registered) {
+        if (PyImport_AppendInittab("dtbridge", module_init) != 0) return JNI_FALSE;
+        g_dtbridge_registered = 1;
+    }
     Py_Initialize();
     PyEval_SaveThread();  /* 释放 GIL，允许其他线程进入 */
 
@@ -325,7 +337,17 @@ Java_com_devterminal_engine_NativeBridge_initialize(
         "            return line[:size]\n"
         "        return line\n"
         "    def read(self, size=-1):\n"
-        "        data = self._read_line()\n"
+        "        if size == 0:\n"
+        "            return ''\n"
+        "        parts = []\n"
+        "        total = 0\n"
+        "        while size < 0 or total < size:\n"
+        "            line = self._read_line()\n"
+        "            if line == '':\n"
+        "                break\n"
+        "            parts.append(line)\n"
+        "            total += len(line)\n"
+        "        data = ''.join(parts)\n"
         "        if size and size > 0 and len(data) > size:\n"
         "            return data[:size]\n"
         "        return data\n"
@@ -343,10 +365,12 @@ Java_com_devterminal_engine_NativeBridge_initialize(
 /* 在专用线程里执行一段脚本文件（调用前无需持有 GIL，内部自管）
  * path       : 脚本绝对路径
  * workingDir : 用户工作目录（os.chdir 到此）
- * scriptDir  : 脚本所在目录（insert 进 sys.path，支持同目录 import） */
+ * scriptDir  : 脚本所在目录（去重后 insert 进 sys.path，支持同目录 import）
+ * args       : 命令行参数数组（Set 为 sys.argv[1:]，argv[0]=脚本路径） */
 JNIEXPORT jstring JNICALL
 Java_com_devterminal_engine_NativeBridge_execFile(
-    JNIEnv *env, jobject thiz, jstring path, jstring workingDir, jstring scriptDir)
+    JNIEnv *env, jobject thiz, jstring path, jstring workingDir,
+    jstring scriptDir, jobjectArray args)
 {
     (void)thiz;
     const char *p = (*env)->GetStringUTFChars(env, path, NULL);
@@ -370,17 +394,47 @@ Java_com_devterminal_engine_NativeBridge_execFile(
             PyDict_SetItemString(globals, "__builtins__", builtins);
             Py_DECREF(builtins);
 
-            /* P1-2: 切工作目录、脚本目录入 sys.path、设置 sys.argv */
+            /* P1-2/P2-5: 切工作目录；脚本目录先去重再 insert（避免跨脚本 import 串扰） */
             {
                 char pre[PATH_MAX * 3];
                 snprintf(pre, sizeof(pre),
                          "import os, sys\n"
                          "os.chdir('%s')\n"
-                         "sys.path.insert(0, '%s')\n"
-                         "sys.argv = ['%s']\n",
-                         wd ? wd : "", sd ? sd : "", p);
+                         "_sd = '%s'\n"
+                         "if _sd in sys.path:\n"
+                         "    sys.path.remove(_sd)\n"
+                         "sys.path.insert(0, _sd)\n",
+                         wd ? wd : "", sd ? sd : "");
                 PyRun_String(pre, Py_file_input, globals, globals);
                 if (PyErr_Occurred()) PyErr_Clear();
+            }
+
+            /* P1-2：用 C API 构造 sys.argv = [scriptPath, ...args]（避免字符串转义问题） */
+            {
+                jsize n = args ? (*env)->GetArrayLength(env, args) : 0;
+                PyObject *argv = PyList_New(n + 1);
+                if (argv) {
+                    PyList_SetItem(argv, 0, PyUnicode_FromString(p));
+                    for (jsize i = 0; i < n; i++) {
+                        jstring je = (jstring)(*env)->GetObjectArrayElement(env, args, i);
+                        const char *arg = je ? (*env)->GetStringUTFChars(env, je, NULL) : "";
+                        PyList_SetItem(argv, i + 1, PyUnicode_FromString(arg ? arg : ""));
+                        if (je) {
+                            if (arg) (*env)->ReleaseStringUTFChars(env, je, arg);
+                            (*env)->DeleteLocalRef(env, je);
+                        }
+                    }
+                    PyObject *sysmod = PyImport_ImportModule("sys");
+                    if (sysmod) {
+                        PyObject_SetAttrString(sysmod, "argv", argv);
+                        Py_DECREF(sysmod);
+                    } else {
+                        PyErr_Clear();
+                    }
+                    Py_DECREF(argv);
+                } else {
+                    PyErr_Clear();
+                }
             }
 
             PyObject *rv = PyRun_FileExFlags(fp, p, Py_file_input, globals, globals, 0, NULL);

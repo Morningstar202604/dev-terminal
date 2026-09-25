@@ -7,12 +7,16 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.isActive
 
 /**
  * AI 助手客户端：OpenAI 兼容协议（/chat/completions）。
  *
  * ## 定位说明（重要）
- * AI 是**可选的在线服务**，不属于「离线能力」——它与 Pyodide 离线运行 Python 是两回事。
+ * AI 是**可选的在线服务**，不属于「离线能力」——它与原生 CPython 离线运行 Python 是两回事。
  * 用户需在设置里自行填写端点地址与 API Key（BYOK），可用云端服务，
  * 也可指向自己部署的 OpenAI 兼容端点（llama.cpp server / LM Studio / Ollama 等）。
  *
@@ -21,6 +25,8 @@ import java.util.concurrent.TimeUnit
  * - 默认值指向本机 Ollama（`http://127.0.0.1:11434/v1`），仅作占位示例——
  *   手机上通常没有本地推理服务，**不配置就等于不可用**，不会静默失败
  * - 未配置端点时 App 不发起任何网络请求，其余功能完全离线
+ * - 明文 http 仅放行本机回环（见 res/xml/network_security_config.xml）；
+ *   用户自填的局域网 http 地址会被系统拦截，需改用 https 或本机 127.0.0.1
  */
 class AiClient(private val settings: com.devterminal.settings.AppSettings) {
 
@@ -77,6 +83,90 @@ class AiClient(private val settings: com.devterminal.settings.AppSettings) {
             return parseChoices(resp)
         } finally {
             conn.disconnect()
+        }
+    }
+
+    /**
+     * 流式对话（SSE）。返回一个冷 Flow，逐段吐出模型生成的增量文本。
+     *
+     * 约定：
+     * - connect 超时 8s；read 不设整体超时，靠收集方取消（取消时 awaitClose 断开连接）。
+     * - 每收到一个 `data: {...}` 帧，提取 `choices[0].delta.content` 并 emit。
+     * - 收到 `data: [DONE]` 正常结束；HTTP 错误或解析失败以异常形式终结 Flow。
+     *
+     * UI 层用法：`client.chatStream(...).collect { delta -> 追加到输出 }`，
+     * 在 ViewModel 作用域内启动，离开页面时取消即停止请求。
+     */
+    fun chatStream(
+        system: String,
+        history: List<ChatMessage>,
+        userMessage: String
+    ): Flow<String> = callbackFlow {
+        val base = settings.aiBaseUrl.trimEnd('/')
+        val url = URL("$base/chat/completions")
+
+        val messages = JSONArray()
+        messages.put(JSONObject().put("role", "system").put("content", system))
+        history.forEach { m ->
+            messages.put(JSONObject().put("role", m.role).put("content", m.content))
+        }
+        messages.put(JSONObject().put("role", "user").put("content", userMessage))
+
+        val body = JSONObject()
+            .put("model", settings.aiModel.ifBlank { "qwen2.5-coder:3b" })
+            .put("messages", messages)
+            .put("temperature", 0.3)
+            .put("max_tokens", 1200)
+            .put("stream", true)
+            .toString()
+
+        var conn: HttpURLConnection? = null
+        val worker = Thread {
+            try {
+                conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = TimeUnit.SECONDS.toMillis(8).toInt()
+                    readTimeout = 0 // 流式：不设整体读超时，靠收集方取消
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json")
+                    setRequestProperty("Accept", "text/event-stream")
+                    if (settings.aiApiKey.isNotBlank()) {
+                        setRequestProperty("Authorization", "Bearer ${settings.aiApiKey}")
+                    }
+                }
+                conn!!.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+
+                val code = conn!!.responseCode
+                if (code !in 200..299) {
+                    val err = conn!!.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                    close(java.io.IOException(friendlyHttp(code, err)))
+                    return@Thread
+                }
+
+                val reader = BufferedReader(InputStreamReader(conn!!.inputStream, Charsets.UTF_8))
+                reader.use { r ->
+                    while (isActive) {
+                        val line = r.readLine() ?: break
+                        if (line.isBlank() || !line.startsWith("data:")) continue
+                        val payload = line.removePrefix("data:").trim()
+                        if (payload == "[DONE]") break
+                        runCatching {
+                            val delta = JSONObject(payload)
+                                .getJSONArray("choices").getJSONObject(0)
+                                .getJSONObject("delta").optString("content", "")
+                            if (delta.isNotEmpty()) trySend(delta)
+                        }
+                    }
+                }
+                close()
+            } catch (e: Exception) {
+                close(e)
+            }
+        }
+        worker.start()
+        awaitClose {
+            worker.interrupt()
+            conn?.disconnect()
         }
     }
 

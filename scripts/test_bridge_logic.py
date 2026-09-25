@@ -12,11 +12,15 @@ def log(*a):
 # ---- 模拟 dtbridge（真实环境由 C 模块提供） ----
 class FakeDt:
     outputs = []
+    eof = False  # sticky EOF：pushEof 后后续 _input 立即 EOFError
     def _output(self, stream, text):
         self.outputs.append((stream, text))
     def _input(self):
+        if self.eof:
+            raise EOFError("EOF(sticky)")
         line = fake_inputs.get(timeout=3)
         if line is None:
+            self.eof = True
             raise EOFError("EOF")
         return line
 
@@ -24,7 +28,7 @@ dt = FakeDt()
 fake_inputs = queue.Queue()
 sys.modules['dtbridge'] = dt
 
-# ---- pybridge.c 注入的原始桥接代码（一字不改） ----
+# ---- pybridge.c 注入的原始桥接代码（一字不改同步自 pybridge.c） ----
 BRIDGE_CODE = (
     "import sys, io\n"
     "class _DtOut(io.TextIOBase):\n"
@@ -42,13 +46,33 @@ BRIDGE_CODE = (
     "    def flush(self):\n"
     "        pass\n"
     "class _DtIn(io.TextIOBase):\n"
-    "    def readline(self, size=-1):\n"
+    "    def _read_line(self):\n"
     "        import dtbridge as _d\n"
-    "        line = _d._input()\n"
+    "        try:\n"
+    "            line = _d._input()\n"
+    "        except EOFError:\n"
+    "            return ''\n"
     "        return line + '\\n'\n"
+    "    def readline(self, size=-1):\n"
+    "        line = self._read_line()\n"
+    "        if size and size > 0 and len(line) > size:\n"
+    "            return line[:size]\n"
+    "        return line\n"
     "    def read(self, size=-1):\n"
-    "        import dtbridge as _d\n"
-    "        return _d._input() + '\\n'\n"
+    "        if size == 0:\n"
+    "            return ''\n"
+    "        parts = []\n"
+    "        total = 0\n"
+    "        while size < 0 or total < size:\n"
+    "            line = self._read_line()\n"
+    "            if line == '':\n"
+    "                break\n"
+    "            parts.append(line)\n"
+    "            total += len(line)\n"
+    "        data = ''.join(parts)\n"
+    "        if size and size > 0 and len(data) > size:\n"
+    "            return data[:size]\n"
+    "        return data\n"
     "sys.stdout = _DtOut()\n"
     "sys.stderr = _DtErr()\n"
     "sys.stdin = _DtIn()\n"
@@ -107,5 +131,37 @@ try:
 except ValueError as e:
     assert str(e) == "测试异常"
 log("test4 exception OK")
+
+# ---- 测试 5：_DtIn.read(size) 循环读到 EOF（P1-3） ----
+dt.outputs.clear()
+dt.eof = False  # 新一轮 stdin
+def feeder5():
+    fake_inputs.put("line-one")
+    fake_inputs.put("line-two")
+    fake_inputs.put(None)  # EOF
+threading.Thread(target=feeder5, daemon=True).start()
+got = sys.stdin.read()
+assert got == "line-one\nline-two\n", repr(got)
+# EOF 之后再读应返回空串（sticky EOF）
+assert sys.stdin.read() == "", "EOF 后 read 应返回空串"
+assert sys.stdin.read(0) == "", "read(0) 应返回空串"
+# size 截断
+dt.eof = False
+def feeder5b():
+    fake_inputs.put("abcdef")
+    fake_inputs.put(None)
+threading.Thread(target=feeder5b, daemon=True).start()
+assert sys.stdin.read(4) == "abcd", repr(sys.stdin.read(4))
+log("test5 read-until-EOF OK")
+
+# ---- 测试 6：sys.argv 构造逻辑（P1-2，模拟 C 层 PyList_New(n+1) 行为） ----
+def build_argv(script_path, args):
+    # 与 pybridge.c execFile 中 C 逻辑等价：argv[0]=scriptPath，其后逐参
+    argv = [script_path] + list(args)
+    return argv
+assert build_argv("/data/main.py", []) == ["/data/main.py"]
+assert build_argv("/data/main.py", ["--foo", "1", "bar"]) == [
+    "/data/main.py", "--foo", "1", "bar"]
+log("test6 argv build OK")
 
 log("ALL BRIDGE LOGIC TESTS PASSED")

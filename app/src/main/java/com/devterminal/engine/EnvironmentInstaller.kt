@@ -9,7 +9,7 @@ import java.io.File
  * ## 与旧版的区别
  * 旧版负责把 441MB 的 `assets/usrtar.zip` 解压到 `files/usr`，并模拟 Termux 环境变量
  * 供原生二进制使用。该方案已废弃——工具链不入库、必须联网下载，与「离线」定位矛盾。
- * 再早一版用 Pyodide（WASM），性能差且 import C 扩展受限，也已被原生 CPython 取代。
+ * 现由原生 CPython 3.13.9（arm64-v8a）直接执行，性能与 C 扩展支持均完整。
  *
  * 现在 Python 由随 APK 打包的原生 CPython 执行：
  * - libpython3.13.so、libpybridge.so 及全部 C 扩展在 jniLibs/arm64-v8a；

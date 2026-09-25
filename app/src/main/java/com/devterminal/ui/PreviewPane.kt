@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
@@ -51,6 +52,11 @@ fun PreviewPane(
         }
     }
     val bg = cs.surface.toArgb()
+
+    // 离开预览分屏时销毁 WebView：否则其内核/渲染线程会随 Activity 泄漏
+    DisposableEffect(webView) {
+        onDispose { runCatching { webView.destroy() } }
+    }
 
     Surface(color = cs.surface, modifier = modifier) {
         Column(Modifier.fillMaxSize()) {

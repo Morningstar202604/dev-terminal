@@ -13,7 +13,6 @@ import com.devterminal.engine.GitManager
 import com.devterminal.engine.Language
 import com.devterminal.engine.RunEvent
 import com.devterminal.engine.RunRequest
-import com.devterminal.engine.PyodideEngine
 import com.devterminal.engine.RunEngine
 import com.devterminal.engine.EngineProvider
 import com.devterminal.project.FileNode
@@ -110,7 +109,16 @@ data class UiState(
     /** 预览分屏是否展开（仅当前文件为 .md/.html 时可开） */
     val previewVisible: Boolean = false,
     /** 预览面板的完整 HTML 文档（防抖后由 renderPreview 刷新） */
-    val previewHtml: String = ""
+    val previewHtml: String = "",
+    // ---------- 会话恢复：光标定位（-1=无请求） ----------
+    val restoreCursorLine: Int = -1,
+    val restoreCursorCol: Int = 0,
+    /** 每次自增触发编辑器把光标移到 restoreCursorLine/Col */
+    val restoreCursorSeq: Long = 0,
+    // ---------- 撤销 / 重做 ----------
+    /** 每次自增触发一次 undo / redo */
+    val undoSignal: Long = 0,
+    val redoSignal: Long = 0
 )
 
 class EditorViewModel(app: Application) : AndroidViewModel(app) {
@@ -119,10 +127,8 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     private val installer = EnvironmentInstaller(context)
 
     /**
-     * 真离线执行引擎：
-     * - 默认原生 CPython（PEP 738 官方 Android 支持，libpython 随 APK 打包，零外部依赖）；
-     * - APK 未带原生运行时（过渡期）自动回退 Pyodide（WebAssembly 版 CPython）。
-     * 引擎切换对 UI 透明（RunEngine 接口）。
+     * 真离线执行引擎：原生 CPython（PEP 738 官方 Android 支持，
+     * libpython 随 APK 打包，零外部依赖）。引擎切换对 UI 透明（RunEngine 接口）。
      */
     private val engine: RunEngine = EngineProvider.create(context)
     private val projects = ProjectManager(installer)
@@ -142,7 +148,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun prepareEnvironment() {
         viewModelScope.launch {
-            // Pyodide 运行时随 APK 打包，无需解压/下载；这里只做目录初始化与解释器预热。
+            // 原生运行时随 APK 打包，无需解压/下载；这里只做目录初始化与解释器预热。
             val ok = withContext(Dispatchers.IO) {
                 runCatching { installer.ensureDirs() }.isSuccess
             }
@@ -156,7 +162,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
 
-            // 预热：让 WebView 后台加载 9MB WASM，用户点「运行」时无需干等
+            // 预热原生解释器：用户点「运行」时无需干等启动开销
             engine.warmup()
 
             // 环境自检：报告当前能力（Python 可用、Java 暂不可用）
@@ -169,7 +175,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 output = listOf(
                     "[DevTerminal] 离线运行环境已就绪，全程无需联网。",
                     "[DevTerminal] Python 由原生 CPython 3.13.9（arm64）执行，随 APK 打包。",
-                    "[DevTerminal] 说明：JVM 无法运行于 WASM 沙箱，Java 暂仅支持编辑与语法高亮。"
+                    "[DevTerminal] 说明：Java（JVM）暂仅支持编辑与语法高亮，运行能力后续开放。"
                 )
             ) }
             restoreSession()
@@ -228,6 +234,18 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             _ui.update { it.copy(openTabs = tabs) }
             if (active != null) {
                 doOpenFile(active, restore = true)
+                // 恢复上次光标位置（SettingsStore 的 cursorLine/cursorCol 为 1 基，换算成编辑器的 0 基）
+                val cLine = snap.cursorLine
+                val cCol = snap.cursorCol
+                if (cLine > 0) {
+                    _ui.update {
+                        it.copy(
+                            restoreCursorLine = (cLine - 1).coerceAtLeast(0),
+                            restoreCursorCol = (cCol - 1).coerceAtLeast(0),
+                            restoreCursorSeq = it.restoreCursorSeq + 1
+                        )
+                    }
+                }
             }
         }
     }
@@ -249,6 +267,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         refreshTree()
         saveSession()
     }
+
+    /** P2-7：按最近修改时间取最近 8 个项目，供命令面板「最近打开」 */
+    fun recentProjects(): List<File> =
+        runCatching {
+            projects.listProjects().sortedByDescending { it.lastModified() }.take(8)
+        }.getOrDefault(emptyList())
 
     private fun refreshTree() {
         val dir = currentProject ?: return
@@ -370,7 +394,9 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val projectDir = currentProject ?: file.parentFile ?: file
         _ui.update { it.copy(
             running = true, output = emptyList(), exitCode = null,
-            inputVisible = true, inputDraft = "", friendlyHint = null,
+            // 默认不弹键盘/不展开 stdin 行：避免每次运行都把键盘顶起来；
+            // 需要交互 input() 的程序由用户在输出区点「点击输入」手动展开。
+            inputVisible = false, inputDraft = "", friendlyHint = null,
             message = "运行 ${file.name} …", messageSeq = it.messageSeq + 1
         ) }
         // 提升为前台服务，避免 Android 12+ 在后台把进程杀掉
@@ -393,6 +419,8 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                         is RunEvent.Started -> st.copy(output = appendLines(st.output, "[执行] ${event.command}"))
                         is RunEvent.Stdout -> st.copy(output = appendLines(st.output, event.line))
                         is RunEvent.Stderr -> st.copy(output = appendLines(st.output, "[err] ${event.line}"))
+                        // 引擎日志（如首次预热提示）：以灰字混入输出，不打断流程
+                        is RunEvent.Log -> st.copy(output = appendLines(st.output, "[引擎] ${event.message}"))
                         is RunEvent.Finished -> {
                             // 非零退出时，尝试把报错翻译成人话
                             val hint = if (event.exitCode != 0) FriendlyError.hint(st.output) else null
@@ -424,6 +452,8 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                                 messageSeq = st.messageSeq + 1
                             )
                         }
+                        // 未来引擎新增的事件类型不阻断运行（如 NeedsInput 暂以手动展开为准）
+                        else -> st
                     }
                 }
             }
@@ -435,8 +465,11 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     /** 追加输出行并守住行数上限，避免死循环输出把内存打满 */
     private fun appendLines(current: List<String>, vararg lines: String): List<String> {
         val merged = current + lines
-        return if (merged.size <= MAX_OUTPUT_LINES) merged
-        else merged.takeLast(MAX_OUTPUT_LINES)
+        if (merged.size <= MAX_OUTPUT_LINES) return merged
+        // 超限时保留最后 N 行，并在最前面插一条 muted 截断提示，让用户知道丢了一段
+        val tail = merged.takeLast(MAX_OUTPUT_LINES)
+        val hint = "[输出已截断，仅保留最后 $MAX_OUTPUT_LINES 行]"
+        return if (tail.firstOrNull() == hint) tail else listOf(hint) + tail
     }
 
     /**
@@ -480,11 +513,30 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             _ui.update {
                 it.copy(message = "正在停止…", messageSeq = it.messageSeq + 1)
             }
+            // 兜底：引擎看门狗若未在 3s 内发出 Finished，UI 强制翻回可运行态，
+            // 避免按钮永远卡在「停止」态。正常路径由引擎 Finished 事件收尾。
+            kotlinx.coroutines.delay(3000L)
+            if (_ui.value.running) {
+                _ui.update {
+                    it.copy(
+                        running = false,
+                        inputVisible = false,
+                        exitCode = it.exitCode ?: -1,
+                        output = appendLines(it.output, "[DevTerminal] 引擎未响应，已强制停止。")
+                    )
+                }
+                runCatching { ExecutionService.stop(context) }
+            }
         }
     }
 
     fun onInputDraftChanged(text: String) {
         _ui.update { it.copy(inputDraft = text) }
+    }
+
+    /** 运行中由用户手动展开 stdin 输入行（猜数字等交互程序用） */
+    fun openInput() {
+        _ui.update { it.copy(inputVisible = true) }
     }
 
     fun onRunArgsChanged(text: String) {
@@ -660,6 +712,11 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun backspaceSymbol() {
         _ui.update { st -> st.copy(backspaceSignal = st.backspaceSignal + 1) }
     }
+
+    // ---------- 撤销 / 重做（信号驱动编辑器内部栈） ----------
+
+    fun undo() { _ui.update { st -> st.copy(undoSignal = st.undoSignal + 1) } }
+    fun redo() { _ui.update { st -> st.copy(redoSignal = st.redoSignal + 1) } }
 
     // ---------- 查找 / 替换 ----------
 

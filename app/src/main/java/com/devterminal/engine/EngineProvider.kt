@@ -5,16 +5,13 @@ import android.os.Build
 import android.util.Log
 
 /**
- * 引擎工厂：使用原生 CPython（NativeEngine，PEP 738 官方支持）。
+ * 引擎工厂：使用原生 CPython（NativeEngine，PEP 738 官方支持，3.13.9 arm64-v8a）。
  *
- * P1-3：不再 runCatching 吞掉 UnsatisfiedLinkError 后静默回退到 Pyodide——
- * 那会把"库损坏/架构不对"伪装成"正常启动"，用户根本不知道跑的是有 bug 的旧引擎。
+ * P1-3：不再 runCatching 吞掉 UnsatisfiedLinkError 后静默回退——
+ * 那会把"库损坏/架构不对"伪装成"正常启动"。
  * 这里明确区分两类失败并抛出带文案的异常，由 UI 层展示：
  *  - 架构不支持：设备 ABI 不含 arm64-v8a
  *  - 运行时损坏：assets/python-stdlib.zip 缺失或 loadLibrary(pybridge) 失败
- *
- * PyodideEngine 类仍保留（过渡期/回滚可用），但本工厂不再自动降级；
- * 如需兜底由调用方显式决定。
  */
 object EngineProvider {
 

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -42,6 +43,8 @@ fun FileTabs(
     activePath: String?,
     onSelect: (File) -> Unit,
     onClose: (File) -> Unit,
+    /** 未保存（脏）的文件绝对路径集合，用于在 Tab 名旁显示小圆点 */
+    dirtyPaths: Set<String> = emptySet(),
     modifier: Modifier = Modifier
 ) {
     if (tabs.isEmpty()) return
@@ -68,10 +71,20 @@ fun FileTabs(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    // 脏 Tab：未保存的小圆点（与顶栏标题旁的 dirty dot 同一语义色）
+                    if (tab.absolutePath in dirtyPaths) {
+                        Box(
+                            Modifier
+                                .padding(start = 4.dp)
+                                .size(6.dp)
+                                .background(cs.secondary, CircleShape)
+                        )
+                    }
+                    // 关闭按钮：视觉图标 11dp，但可点区撑到 32dp，避免误点相邻 Tab
                     Box(
                         modifier = Modifier
-                            .padding(start = 5.dp)
-                            .size(17.dp)
+                            .padding(start = 2.dp)
+                            .defaultMinSize(minWidth = 32.dp, minHeight = 32.dp)
                             .clip(CircleShape)
                             .clickable { onClose(tab) },
                         contentAlignment = Alignment.Center

@@ -5,16 +5,14 @@ import kotlinx.coroutines.flow.Flow
 /**
  * 运行引擎的统一抽象：UI 层只依赖本接口，不关心底层实现。
  *
- * 当前实现 [PyodideEngine]（WebView + WASM，阶段 0 止血后仍可用）；
- * 阶段 1 将新增 [ChaquopyEngine]（原生 CPython）实现同一接口，
- * 切换运行时对 UI 完全透明，可双引擎并存灰度对比。
+ * 当前唯一实现为 [NativeEngine]（原生 CPython 3.13.9，arm64-v8a）。
  */
 interface RunEngine {
 
     /** 解释器是否已就绪（预热完成或首次运行完成加载） */
     val isEnvironmentReady: Boolean
 
-    /** 预热：确保运行时可用（首次可能较慢，含 WASM/原生库装载） */
+    /** 预热：确保运行时可用（首次可能较慢，含原生库装载与标准库解压） */
     suspend fun prepareEnvironment(onProgress: (Long, Long) -> Unit)
 
     /** 后台预热（不阻塞调用方） */

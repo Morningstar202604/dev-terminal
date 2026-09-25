@@ -2,11 +2,16 @@ package com.devterminal.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -14,12 +19,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -45,6 +53,8 @@ import com.devterminal.ui.components.QuietTextField
 import com.devterminal.ui.components.StatusDot
 import com.devterminal.ui.theme.Dimens
 import com.devterminal.ui.theme.muted
+import com.devterminal.ui.theme.success
+import com.devterminal.ui.theme.warning
 
 /**
  * 从一行输出里解析出「文件:行号」中的行号，解析不到返回 null。
@@ -96,6 +106,10 @@ fun OutputPanel(
     onInputSend: () -> Unit,
     onClear: () -> Unit,
     onRerun: () -> Unit,
+    /** 运行中点底部「■ 停止」pill 时回调 */
+    onStop: (() -> Unit)? = null,
+    /** 用户在输出区点「点击输入」入口，展开 stdin 输入行并弹键盘 */
+    onRequestInput: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
     /**
      * 点击带行号的报错行时回调行号（0 基）。
@@ -138,8 +152,56 @@ fun OutputPanel(
     LaunchedEffect(inputVisible) {
         if (inputVisible) runCatching { inputFocus.requestFocus() }
     }
+    // P1-1：每次新运行（running false→true）都复位自动跟随，避免上一轮用户上翻后
+    // 这一轮新输出停在历史位置不贴底。
+    LaunchedEffect(running) {
+        if (running) autoFollow = true
+    }
 
     Column(modifier = modifier.background(cs.background)) {
+        // ---------- 主操作 pill（拇指区主操作：运行 / 停止） ----------
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (running) {
+                Row(
+                    Modifier
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(cs.error.copy(alpha = 0.12f))
+                        .clickable { onStop?.invoke() }
+                        .padding(horizontal = 22.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Stop, "停止", tint = cs.error,
+                        modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("停止", color = cs.error,
+                        style = MaterialTheme.typography.labelLarge)
+                }
+            } else {
+                Row(
+                    Modifier
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(cs.primary)
+                        .clickable { onRerun() }
+                        .padding(horizontal = 28.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.PlayArrow, "运行", tint = cs.onPrimary,
+                        modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("运行", color = cs.onPrimary,
+                        style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+
         // ---------- 头部 ----------
         Row(
             modifier = Modifier
@@ -150,7 +212,8 @@ fun OutputPanel(
             if (running || exitCode != null) {
                 val (dot, label) = when {
                     running -> cs.secondary to "运行中"
-                    exitCode == 0 -> cs.primary to "已完成"
+                    // 成功用语义 success 色（teal），而非 indigo 强调色，避免和「主操作」混淆
+                    exitCode == 0 -> cs.success to "已完成"
                     else -> cs.error to "退出码 $exitCode"
                 }
                 StatusDot(dot)
@@ -227,6 +290,24 @@ fun OutputPanel(
                         )
                     }
                 }
+            }
+        }
+
+        // ---------- 交互输入入口（默认收起，避免一运行就顶起键盘） ----------
+        // 猜数字等依赖 input() 的程序：用户点这里才展开输入行 + 弹键盘。
+        if (running && !inputVisible) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onRequestInput?.invoke() }
+                    .padding(vertical = 9.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.Keyboard, "输入", tint = cs.muted,
+                    modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(6.dp))
+                MonoText("点击输入（交互程序等待输入时）", color = cs.muted, fontSize = 10)
             }
         }
 

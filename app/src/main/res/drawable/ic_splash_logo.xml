@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="72dp"
+    android:height="72dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 终端提示符 >_ ：DevTerminal 的极简标识，启动屏居中 -->
+    <path
+        android:fillColor="#8FA7F5"
+        android:pathData="M4,5 L10,12 L4,19 L5.8,19 L11.8,12 L5.8,5 Z M13,18.2 L20,18.2 L20,20 L13,20 Z" />
+</vector>

@@ -29,6 +29,8 @@ sealed interface RunEvent {
     data class Stdout(val line: String) : RunEvent
     /** 标准错误的一行 */
     data class Stderr(val line: String) : RunEvent
+    /** 引擎侧静音日志（如首次预热提示），非程序输出，UI 应以灰色小字展示 */
+    data class Log(val message: String) : RunEvent
     /** 进程结束 */
     data class Finished(val exitCode: Int, val durationMs: Long) : RunEvent
     /** 运行前发生的错误（例如工具链未安装、文件不存在、编译失败） */

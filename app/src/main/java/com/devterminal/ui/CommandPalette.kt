@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -40,6 +41,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.devterminal.ui.components.QuietHint
+import com.devterminal.ui.components.SectionLabel
 import com.devterminal.ui.theme.Dimens
 import com.devterminal.ui.theme.faint
 import com.devterminal.ui.theme.hairline
@@ -66,7 +68,9 @@ data class Command(
 @Composable
 fun CommandPalette(
     commands: List<Command>,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    /** 「最近打开」的文件项；空则不显示该分组。query 非空时自动隐藏。 */
+    recent: List<Command> = emptyList()
 ) {
     var query by remember { mutableStateOf("") }
     val focus = remember { FocusRequester() }
@@ -86,7 +90,8 @@ fun CommandPalette(
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = cs.surface,
-            modifier = Modifier.fillMaxWidth()
+            // imePadding：软键盘弹起时整个面板随之上推，列表不被键盘遮掉
+            modifier = Modifier.fillMaxWidth().imePadding()
         ) {
             Column(Modifier.padding(top = Dimens.lg, bottom = Dimens.sm)) {
                 TextField(
@@ -124,6 +129,38 @@ fun CommandPalette(
                         .background(cs.hairline)
                 )
                 LazyColumn(modifier = Modifier.fillMaxWidth().height(340.dp)) {
+                    // 最近打开：仅在未输入查询时展示，命中搜索时只显示过滤后的命令
+                    if (query.isBlank() && recent.isNotEmpty()) {
+                        item(key = "hdr_recent") {
+                            SectionLabel("最近打开",
+                                modifier = Modifier.padding(start = Dimens.lg, top = Dimens.sm, bottom = Dimens.xs))
+                        }
+                        items(recent, key = { "recent_" + it.id }) { cmd ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { onDismiss(); cmd.action() }
+                                    .padding(horizontal = Dimens.lg, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(cmd.icon, null, modifier = Modifier.size(18.dp), tint = cs.primary)
+                                Spacer(Modifier.width(Dimens.md))
+                                Column(Modifier.weight(1f)) {
+                                    Text(cmd.title, style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium)
+                                    if (cmd.subtitle.isNotBlank()) {
+                                        Text(cmd.subtitle, style = MaterialTheme.typography.labelSmall,
+                                            color = cs.muted)
+                                    }
+                                }
+                            }
+                        }
+                        item(key = "hdr_all") {
+                            SectionLabel("全部命令",
+                                modifier = Modifier.padding(start = Dimens.lg, top = Dimens.md, bottom = Dimens.xs))
+                        }
+                    }
                     items(filtered, key = { it.id }) { cmd ->
                         Row(
                             modifier = Modifier
@@ -155,7 +192,7 @@ fun CommandPalette(
                             }
                         }
                     }
-                    if (filtered.isEmpty()) {
+                    if (filtered.isEmpty() && query.isNotBlank()) {
                         item {
                             Box(
                                 Modifier.fillMaxWidth().padding(vertical = Dimens.xxl),

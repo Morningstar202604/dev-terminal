@@ -54,6 +54,7 @@ private val QuietDark = darkColorScheme(
     onError = Color(0xFF3A1512),
     errorContainer = Color(0xFF3A1B18),
     onErrorContainer = Color(0xFFFFD5D0)
+    // 语义色 success/warning 通过文件末尾扩展属性提供（Material3 ColorScheme 无此构造参数）
 )
 
 // ---------- 浅色：暖白纸感，文字用墨黑而非纯黑 ----------
@@ -80,6 +81,7 @@ private val QuietLight = lightColorScheme(
     onError = Color(0xFFFFFFFF),
     errorContainer = Color(0xFFFBE6E4),
     onErrorContainer = Color(0xFF7A211A)
+    // 语义色 success/warning 通过文件末尾扩展属性提供
 )
 
 /** 大圆角：柔和、不锐利，是这套视觉的主要「性格」来源 */
@@ -171,3 +173,39 @@ val androidx.compose.material3.ColorScheme.faint: Color
     @Composable
     @ReadOnlyComposable
     get() = onSurface.copy(alpha = 0.38f)
+
+/**
+ * info：indigo 主色的浅变体，用于普通信息提示（介于 muted 与 primary 之间）。
+ * M3 没有标准 info 角色，这里做成随明暗取色的扩展。
+ */
+val androidx.compose.material3.ColorScheme.info: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = if (background.luminance() > 0.5f) Color(0xFF4A63D9) else Color(0xFF8FA7F5)
+
+/**
+ * success：teal 绿色，用于"已完成/成功"状态反馈，不参与主操作。
+ * M3 无标准 success 角色，做成随明暗取色的扩展。
+ */
+val androidx.compose.material3.ColorScheme.success: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = if (background.luminance() > 0.5f) Color(0xFF0D9488) else Color(0xFF2DD4BF)
+
+val androidx.compose.material3.ColorScheme.onSuccess: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = if (background.luminance() > 0.5f) Color.White else Color(0xFF06251F)
+
+/**
+ * warning：amber 琥珀色，用于"警告/需注意"状态反馈。
+ */
+val androidx.compose.material3.ColorScheme.warning: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = if (background.luminance() > 0.5f) Color(0xFFB45309) else Color(0xFFFBBF24)
+
+val androidx.compose.material3.ColorScheme.onWarning: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = if (background.luminance() > 0.5f) Color.White else Color(0xFF2B1D02)
