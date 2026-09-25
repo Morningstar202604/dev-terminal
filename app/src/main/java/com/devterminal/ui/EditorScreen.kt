@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.HealthAndSafety
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.LibraryBooks
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.NavigateBefore
 import androidx.compose.material.icons.outlined.Preview
@@ -765,6 +766,7 @@ fun EditorScreen(vm: EditorViewModel) {
                     "goto" -> overlay = Overlay.GotoLine
                     "newfile" -> overlay = Overlay.NewFile
                     "newfolder" -> overlay = Overlay.NewFolder
+                    "packages" -> overlay = Overlay.Packages
                 } }
             ),
             recent = recent,
@@ -905,6 +907,14 @@ fun EditorScreen(vm: EditorViewModel) {
         GotoLineDialog(
             onDismiss = ::closeOverlay,
             onGo = { line -> vm.gotoLine(line); closeOverlay() }
+        )
+    }
+
+    if (overlay == Overlay.Packages) {
+        PackagesDialog(
+            context = LocalContext.current,
+            onImportWheel = { /* TODO: SAF 选 .whl 后交给 micropip 安装 */ },
+            onDismiss = ::closeOverlay
         )
     }
 }
@@ -1158,6 +1168,8 @@ private fun buildCommands(
         Icons.Filled.NoteAdd) { onCommand("newfile") })
     add(Command("newfolder", "新建文件夹", "在项目根创建",
         Icons.Filled.CreateNewFolder) { onCommand("newfolder") })
+    add(Command("packages", "离线 Python 包", "查看内置库 / 安装 wheel",
+        Icons.Outlined.LibraryBooks) { onCommand("packages") })
     add(Command("diag", "环境自检", "Python / pip / Java / javac / Git",
         Icons.Outlined.HealthAndSafety) { onCommand("diag") })
     add(Command("settings", "设置", "主题 / 字号 / 超时 / AI 端点",

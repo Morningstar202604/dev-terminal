@@ -56,6 +56,9 @@ sealed interface Overlay {
     /** 跳转到行 */
     data object GotoLine : Overlay
 
+    /** 离线包管理（查看内置库 / 安装本地 wheel） */
+    data object Packages : Overlay
+
     /** 首次启动的引导（工具链就绪但尚未打开任何文件时出现） */
     data object Onboarding : Overlay
 

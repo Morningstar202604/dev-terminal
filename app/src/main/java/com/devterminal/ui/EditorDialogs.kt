@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Folder
@@ -606,5 +607,57 @@ fun GotoLineDialog(onDismiss: () -> Unit, onGo: (Int) -> Unit) {
             modifier = Modifier.fillMaxWidth(),
             placeholder = "行号（如 12）"
         )
+    }
+}
+
+/** 离线包管理：列出内置 Pyodide wheel，支持导入外部 .whl */
+@Composable
+fun PackagesDialog(
+    context: android.content.Context,
+    onImportWheel: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val cs = MaterialTheme.colorScheme
+    // 从 assets/pyodide/ 读所有 .whl 文件名，解析包名+版本
+    val packages = remember {
+        runCatching {
+            context.assets.list("pyodide")?.filter { it.endsWith(".whl") }?.map { whl ->
+                // numpy-1.26.4-cp312-cp312-pyodide_2024_0_wasm32.whl -> numpy 1.26.4
+                val parts = whl.removeSuffix(".whl").split("-")
+                val name = parts.getOrElse(0) { whl }
+                val version = parts.getOrElse(1) { "" }
+                name to version
+            }?.sortedBy { it.first } ?: emptyList()
+        }.getOrDefault(emptyList())
+    }
+    QuietDialog(onDismiss = onDismiss, title = "离线 Python 包") {
+        Text(
+            "以下库已随 APK 内置，代码里直接 import 即可，无需联网。",
+            style = MaterialTheme.typography.labelSmall,
+            color = cs.muted
+        )
+        Spacer(Modifier.height(Dimens.md))
+        packages.forEach { (name, version) ->
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.CheckCircle, null, tint = cs.primary,
+                    modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(Dimens.md))
+                Text(name, style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f))
+                Text(version, style = MaterialTheme.typography.labelSmall,
+                    color = cs.muted)
+            }
+        }
+        Spacer(Modifier.height(Dimens.md))
+        Hairline()
+        Spacer(Modifier.height(Dimens.sm))
+        TextButton(onClick = onImportWheel) {
+            Icon(Icons.Filled.NoteAdd, null, tint = cs.primary, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("导入本地 .whl 文件", style = MaterialTheme.typography.labelLarge, color = cs.primary)
+        }
     }
 }
