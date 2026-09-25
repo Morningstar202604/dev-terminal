@@ -250,12 +250,12 @@ fun CodeEditorView(
                 setTextSize(fontSize.toFloat())
                 applyScheme(this)
                 applyLanguage(this, file, language, docRef)
-                // 自动换行
-                runCatching { props.wordwrap = wordWrap }
-                // 自动闭合括号/引号
-                runCatching { props.autoClosePairs = autoCloseBrackets }
-                // 行号
-                runCatching { props.lineNumbersEnabled = showLineNumbers }
+                // 自动换行（SoraEditor API：CodeEditor.setWordwrap）
+                runCatching { setWordwrap(wordWrap) }
+                // 自动闭合括号/引号（SoraEditor API：props.symbolPairAutoCompletion）
+                runCatching { props.symbolPairAutoCompletion = autoCloseBrackets }
+                // 行号（SoraEditor API：CodeEditor.setLineNumberEnabled）
+                runCatching { setLineNumberEnabled(showLineNumbers) }
 
                 // 启用补全组件（getter 是 getComponent）
                 runCatching {
@@ -284,9 +284,9 @@ fun CodeEditorView(
         },
         update = { view ->
             docRef.set(text)
-            runCatching { view.props.wordwrap = wordWrap }
-            runCatching { view.props.autoClosePairs = autoCloseBrackets }
-            runCatching { view.props.lineNumbersEnabled = showLineNumbers }
+            runCatching { view.setWordwrap(wordWrap) }
+            runCatching { view.props.symbolPairAutoCompletion = autoCloseBrackets }
+            runCatching { view.setLineNumberEnabled(showLineNumbers) }
             // 字号实时跟随设置（setTextSize 单位为 sp）
             val targetPx = TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_SP, fontSize.toFloat(), view.resources.displayMetrics

@@ -81,7 +81,7 @@ fun PreviewPane(
                 Spacer(Modifier.weight(1f))
                 QuietIconButton(
                     icon = Icons.Outlined.OpenInBrowser,
-                    description = "在外部浏览器打开",
+                    contentDescription = "在外部浏览器打开",
                     onClick = {
                         runCatching {
                             val dir = File(context.cacheDir, "shared").apply { mkdirs() }

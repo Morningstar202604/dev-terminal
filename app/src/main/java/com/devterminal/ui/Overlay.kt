@@ -75,4 +75,4 @@ sealed interface Overlay {
  * 用自增序号作为触发信号：同一个行号连点两次也要各生效一次，
  * 若只比较行号本身，第二次点击不会产生状态变化，编辑器就不会响应。
  */
-data class ScrollToLineRequest(val line: Int, val seq: Long)
+data class ScrollToLineRequest(val line: Int, val seq: Long, val col: Int = 0)

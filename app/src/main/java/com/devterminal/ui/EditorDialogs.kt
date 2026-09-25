@@ -1,7 +1,11 @@
 package com.devterminal.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import android.net.Uri
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,6 +51,7 @@ import com.devterminal.engine.EnvDiagnostics
 import com.devterminal.ui.components.Hairline
 import com.devterminal.ui.components.MonoText
 import com.devterminal.ui.components.QuietDialog
+import com.devterminal.ui.components.QuietHint
 import com.devterminal.ui.components.QuietSwitchRow
 import com.devterminal.ui.components.QuietTextField
 import com.devterminal.ui.components.SectionLabel
@@ -536,6 +541,7 @@ fun NewFolderDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
 
 /** 切换项目：列出所有已有项目，点一个就切过去；底部可新建项目 */
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun SwitchProjectDialog(
     projects: List<java.io.File>,
     currentPath: String?,
@@ -610,54 +616,127 @@ fun GotoLineDialog(onDismiss: () -> Unit, onGo: (Int) -> Unit) {
     }
 }
 
-/** 离线包管理：列出内置 Pyodide wheel，支持导入外部 .whl */
+/** 离线包管理：展示原生引擎内置能力（C 扩展 + site-packages），支持导入纯 Python 包（.zip） */
+private data class BuiltinLibs(
+    val extensions: List<String>,
+    val purePackages: List<String>
+)
+
+private fun scanBuiltin(context: android.content.Context): BuiltinLibs {
+    val extensions = runCatching {
+        File(context.applicationInfo.nativeLibraryDir).listFiles()
+            ?.filter { it.name.startsWith("lib") && it.name.endsWith(".so") }
+            ?.mapNotNull { f ->
+                val m = f.name.removePrefix("lib").removeSuffix(".so")
+                // 引擎本体（libpython3.13 / libpybridge）不算扩展；.so 模块名统一转成 import 名
+                if (m == "python3.13" || m == "pybridge") null else m.replace("_", "_")
+            }?.sorted() ?: emptyList()
+    }.getOrDefault(emptyList())
+    val pure = runCatching {
+        File(context.filesDir, "lib/python3.13/site-packages").listFiles()
+            ?.filter { it.isDirectory }?.map { it.name }?.sorted() ?: emptyList()
+    }.getOrDefault(emptyList())
+    return BuiltinLibs(extensions, pure)
+}
+
+/** 导入纯 Python 包：仅接受 .zip（内容不含 .so/.wasm/.dll/.pyd 及 pyodide 痕迹），
+ *  解压到 site-packages（pybridge 初始化时已把该目录加入 sys.path）。 */
+private fun importPurePythonPackage(context: android.content.Context, uri: Uri): Boolean {
+    val tmp = File(context.cacheDir, "import_pkg.zip")
+    context.contentResolver.openInputStream(uri)?.use { input ->
+        tmp.outputStream().use { out -> input.copyTo(out) }
+    } ?: return false
+    val zf = runCatching { java.util.zip.ZipFile(tmp) }.getOrNull() ?: return false
+    try {
+        val it = zf.entries()
+        while (it.hasMoreElements()) {
+            val n = it.nextElement().name.lowercase()
+            if (n.endsWith(".so") || n.endsWith(".wasm") || n.endsWith(".dll") ||
+                n.endsWith(".pyd") || n.contains("pyodide")) return false
+        }
+        val dest = File(context.filesDir, "lib/python3.13/site-packages").apply { mkdirs() }
+        val eit = zf.entries()
+        while (eit.hasMoreElements()) {
+            val e = eit.nextElement()
+            if (e.isDirectory) continue
+            val f = File(dest, e.name)
+            f.parentFile?.mkdirs()
+            zf.getInputStream(e).use { inp -> f.outputStream().use { out -> inp.copyTo(out) } }
+        }
+        tmp.delete()
+        return true
+    } finally {
+        zf.close()
+        tmp.delete()
+    }
+}
+
+/** 离线包管理：列出内置能力，支持导入纯 Python 包 */
 @Composable
 fun PackagesDialog(
     context: android.content.Context,
-    onImportWheel: () -> Unit,
+    onToast: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
-    // 从 assets/pyodide/ 读所有 .whl 文件名，解析包名+版本
-    val packages = remember {
-        runCatching {
-            context.assets.list("pyodide")?.filter { it.endsWith(".whl") }?.map { whl ->
-                // numpy-1.26.4-cp312-cp312-pyodide_2024_0_wasm32.whl -> numpy 1.26.4
-                val parts = whl.removeSuffix(".whl").split("-")
-                val name = parts.getOrElse(0) { whl }
-                val version = parts.getOrElse(1) { "" }
-                name to version
-            }?.sortedBy { it.first } ?: emptyList()
-        }.getOrDefault(emptyList())
+    var refresh by remember { mutableStateOf(0) }
+    val libs = remember(refresh) { scanBuiltin(context) }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val ok = runCatching { importPurePythonPackage(context, uri) }.getOrElse { false }
+        onToast(if (ok) "已导入 site-packages（纯 Python 包，可直接 import）"
+                    else "导入失败：仅支持纯 Python 包（.zip，内容不含 .so/.wasm）")
+        refresh++
     }
     QuietDialog(onDismiss = onDismiss, title = "离线 Python 包") {
         Text(
-            "以下库已随 APK 内置，代码里直接 import 即可，无需联网。",
+            "以下能力随 APK 内置，代码里直接 import 即可，全程无需联网。",
             style = MaterialTheme.typography.labelSmall,
             color = cs.muted
         )
-        Spacer(Modifier.height(Dimens.md))
-        packages.forEach { (name, version) ->
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Filled.CheckCircle, null, tint = cs.primary,
-                    modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(Dimens.md))
-                Text(name, style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f))
-                Text(version, style = MaterialTheme.typography.labelSmall,
-                    color = cs.muted)
+        if (libs.extensions.isNotEmpty()) {
+            Spacer(Modifier.height(Dimens.md))
+            Text("C 扩展（原生编译）", style = MaterialTheme.typography.labelMedium, color = cs.primary)
+            libs.extensions.chunked(4).forEach { rowNames ->
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                    rowNames.forEach { name ->
+                        Row(Modifier.weight(1f)) {
+                            Icon(Icons.Filled.CheckCircle, null, tint = cs.primary, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(name, style = MaterialTheme.typography.bodySmall, color = cs.muted)
+                        }
+                    }
+                    repeat(4 - rowNames.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+        if (libs.purePackages.isNotEmpty()) {
+            Spacer(Modifier.height(Dimens.md))
+            Text("已安装的纯 Python 包", style = MaterialTheme.typography.labelMedium, color = cs.primary)
+            libs.purePackages.forEach { name ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                    Icon(Icons.Filled.CheckCircle, null, tint = cs.primary, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(name, style = MaterialTheme.typography.bodyMedium)
+                }
             }
         }
         Spacer(Modifier.height(Dimens.md))
         Hairline()
         Spacer(Modifier.height(Dimens.sm))
-        TextButton(onClick = onImportWheel) {
+        Text(
+            "标准库（math/random/json/socket/ctypes/ssl/sqlite3 等）内置于 python-stdlib.zip，无需安装。",
+            style = MaterialTheme.typography.labelSmall,
+            color = cs.muted
+        )
+        Spacer(Modifier.height(Dimens.sm))
+        TextButton(onClick = { importLauncher.launch(arrayOf("application/zip", "application/octet-stream")) }) {
             Icon(Icons.Filled.NoteAdd, null, tint = cs.primary, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text("导入本地 .whl 文件", style = MaterialTheme.typography.labelLarge, color = cs.primary)
+            Text("导入纯 Python 包（.zip）", style = MaterialTheme.typography.labelLarge, color = cs.primary)
         }
     }
 }
+

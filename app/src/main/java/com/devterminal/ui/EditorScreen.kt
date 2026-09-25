@@ -86,6 +86,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -913,7 +914,9 @@ fun EditorScreen(vm: EditorViewModel) {
     if (overlay == Overlay.Packages) {
         PackagesDialog(
             context = LocalContext.current,
-            onImportWheel = { /* TODO: SAF 选 .whl 后交给 micropip 安装 */ },
+            onToast = { msg ->
+                scope.launch { snackbar.showSnackbar(msg) }
+            },
             onDismiss = ::closeOverlay
         )
     }
@@ -1163,7 +1166,7 @@ private fun buildCommands(
     add(Command("goto", "跳转到行", "输入行号直达",
         Icons.Outlined.NavigateBefore) { onCommand("goto") })
     add(Command("copyout", "复制全部输出", "写入剪贴板",
-        Icons.Outlined.ContentCopy) { vm.copyOutput() })
+        Icons.Filled.ContentCopy) { vm.copyOutput() })
     add(Command("newfile", "新建文件", "在项目根创建",
         Icons.Filled.NoteAdd) { onCommand("newfile") })
     add(Command("newfolder", "新建文件夹", "在项目根创建",
@@ -1208,7 +1211,7 @@ private fun ImageFileViewer(file: File, modifier: Modifier = Modifier) {
     Box(modifier.background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
         if (bitmap != null) {
             androidx.compose.foundation.Image(
-                bitmap = androidx.compose.ui.graphics.asImageBitmap(bitmap),
+                bitmap = bitmap.asImageBitmap(),
                 contentDescription = file.name,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = androidx.compose.ui.layout.ContentScale.Fit
