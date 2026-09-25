@@ -141,7 +141,8 @@ fun GitPanelDialog(
                     if (status.changes.isEmpty()) {
                         QuietHint("工作区干净")
                     } else {
-                        LazyColumn(Modifier.fillMaxWidth()) {
+                        // weight(1f)：变更列表填满固定高度的容器，超出可滚动而不是被裁
+                        LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                             items(status.changes, key = { it.path }) { c ->
                                 Row(
                                     Modifier

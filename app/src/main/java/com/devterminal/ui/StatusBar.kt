@@ -1,11 +1,9 @@
 package com.devterminal.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -33,10 +31,11 @@ fun StatusBar(
     modifier: Modifier = Modifier
 ) {
     val cs = MaterialTheme.colorScheme
+    // 去掉 horizontalScroll：横滚 Row 给 weight 分配的是「无限宽」，Spacer(weight 1f)
+    // 永远拿不到剩余空间，右侧「已保存」无法贴边。状态栏内容很短，直接恢复 weight 布局。
     Row(
         modifier = modifier
             .background(cs.surface)
-            .horizontalScroll(rememberScrollState())
             .padding(horizontal = 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

@@ -1,43 +1,65 @@
 package com.devterminal.engine
 
 import android.content.Context
+import android.os.Build
 import android.util.Log
 
 /**
- * 引擎工厂：优先使用原生 CPython（NativeEngine，PEP 738 官方支持），
- * 若 APK 未打包原生运行时（libpybridge.so / python-stdlib.zip 缺失）则回退 Pyodide。
+ * 引擎工厂：使用原生 CPython（NativeEngine，PEP 738 官方支持）。
  *
- * 判定方式简单直接，不靠配置文件：
- * - assets 里有 python-stdlib.zip（标准库打包随 APK 存在）→ 原生可用
- * - System.loadLibrary("pybridge") 成功（JNI 桥与 libpython 都在 jniLibs）→ 原生可用
+ * P1-3：不再 runCatching 吞掉 UnsatisfiedLinkError 后静默回退到 Pyodide——
+ * 那会把"库损坏/架构不对"伪装成"正常启动"，用户根本不知道跑的是有 bug 的旧引擎。
+ * 这里明确区分两类失败并抛出带文案的异常，由 UI 层展示：
+ *  - 架构不支持：设备 ABI 不含 arm64-v8a
+ *  - 运行时损坏：assets/python-stdlib.zip 缺失或 loadLibrary(pybridge) 失败
  *
- * 过渡期两种 APK 形态都能跑；原生引擎上线后，Pyodide（72MB assets）可整体下线。
+ * PyodideEngine 类仍保留（过渡期/回滚可用），但本工厂不再自动降级；
+ * 如需兜底由调用方显式决定。
  */
 object EngineProvider {
 
     private const val TAG = "EngineProvider"
 
     fun create(context: Context): RunEngine {
-        return if (nativeAvailable(context)) {
-            Log.i(TAG, "使用原生 CPython 引擎")
-            NativeEngine(context)
-        } else {
-            Log.i(TAG, "原生运行时缺失，回退 Pyodide 引擎")
-            PyodideEngine(context)
-        }
+        checkNativeRuntime(context)
+        Log.i(TAG, "使用原生 CPython 3.13.9 (arm64-v8a) 引擎")
+        return NativeEngine(context)
     }
 
-    /** 原生运行时是否已随 APK 打包 */
-    private fun nativeAvailable(context: Context): Boolean {
+    /**
+     * 启动前显式校验原生运行时是否就位。失败抛 [IllegalStateException]，
+     * 文案可直接给用户看。
+     */
+    private fun checkNativeRuntime(context: Context) {
+        // 1) 架构：只支持 arm64-v8a
+        val abis = Build.SUPPORTED_ABIS?.toList().orEmpty()
+        if (abis.none { it.equals("arm64-v8a", ignoreCase = true) }) {
+            throw IllegalStateException(
+                "当前 CPU 架构不支持原生 Python（仅支持 arm64-v8a，当前设备：${abis.joinToString()}）"
+            )
+        }
+
+        // 2) 标准库 zip 是否随 APK 打包
         val hasStdlib = runCatching {
             context.assets.open("python-stdlib.zip").use { }
         }.isSuccess
-        if (!hasStdlib) return false
-        // NativeBridge.companion 的 System.loadLibrary 若失败会在初始化时报错，
-        // 这里显式探测一次，避免运行时才炸
-        return runCatching {
-            // 触发 NativeBridge 静态初始化（loadLibrary）
+        if (!hasStdlib) {
+            throw IllegalStateException(
+                "原生 Python 运行时不完整：assets/python-stdlib.zip 缺失，请重新安装 APK"
+            )
+        }
+
+        // 3) JNI 桥能否加载（触发 NativeBridge 静态 init → System.loadLibrary）
+        try {
             Class.forName("com.devterminal.engine.NativeBridge")
-        }.isSuccess
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "loadLibrary(pybridge) 失败", e)
+            throw IllegalStateException(
+                "原生 Python 运行时加载失败（库可能损坏或与设备不兼容）：${e.message}", e
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "NativeBridge 初始化失败", e)
+            throw IllegalStateException("原生 Python 初始化失败：${e.message}", e)
+        }
     }
 }

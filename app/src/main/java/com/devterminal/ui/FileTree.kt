@@ -95,7 +95,10 @@ fun FileTree(
         if (root == null) {
             QuietHint("加载中…", modifier = Modifier.padding(Dimens.gutter))
         } else {
-            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+            // weight(1f)：文件树要吃掉顶栏「项目」标签之外的剩余纵向空间，
+            // 否则目录一长，底部文件就被裁在抽屉外。
+            // 注：子树仍在 item 内递归 emit（回收不彻底），摊平为 flatNodes 留作后续优化。
+            LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 val topChildren = root.children.ifEmpty { listOf(root) }
                 items(topChildren, key = { it.path }) { node ->
                     TreeNode(

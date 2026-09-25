@@ -1,14 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DevTerminal adaptive-icon foreground.
+  Mark centered on the 108 viewport (center 54,54), kept inside the central
+  72dp safe zone (18..90) so circle/squircle masks never clip it.
+  Chevron '>' and cursor underscore are STROKED paths with round caps/joins
+  (the underscore is a real visible line, not a zero-height fill).
+  Underscore uses the Quiet single accent indigo #4F46E5.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 终端外框 -->
+    <!-- terminal window -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M30,34 h48 a8,8 0 0 1 8,8 v32 a8,8 0 0 1 -8,8 h-48 a8,8 0 0 1 -8,-8 v-32 a8,8 0 0 1 8,-8 z" />
-    <!-- 提示符 > 与光标 _ -->
+        android:pathData="M34,30 h40 a8,8 0 0 1 8,8 v32 a8,8 0 0 1 -8,8 h-40 a8,8 0 0 1 -8,-8 v-32 a8,8 0 0 1 8,-8 z" />
+    <!-- chevron '>' -->
     <path
-        android:fillColor="#0F172A"
-        android:pathData="M34,54 l12,12 l-12,12 M56,78 h18" />
+        android:fillColor="#00000000"
+        android:strokeColor="#0F172A"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M34,48 L46,54 L34,60" />
+    <!-- cursor underscore (indigo accent) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#4F46E5"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:pathData="M52,60 L68,60" />
 </vector>

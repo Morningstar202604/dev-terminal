@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -82,7 +83,8 @@ fun AiPanelDialog(
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
-                LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
+                // 消息列表填满固定高度 Box：原先只 fillMaxWidth，超长对话会被 Box 直接裁掉
+                LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
                     items(messages) { m ->
                         Bubble(m)
                         Spacer(Modifier.height(Dimens.sm))

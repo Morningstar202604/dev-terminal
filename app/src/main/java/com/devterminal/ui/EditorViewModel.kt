@@ -163,12 +163,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             val hasGit = withContext(Dispatchers.IO) { git.isGitInstalled() }
             _ui.update { it.copy(
                 envState = EnvState.READY,
-                envMessage = "离线环境就绪（Python · Pyodide/WASM）",
+                envMessage = "离线环境就绪（Python · CPython 3.13.9 arm64）",
                 installProgress = -1f,
                 gitInstalled = hasGit,
                 output = listOf(
                     "[DevTerminal] 离线运行环境已就绪，全程无需联网。",
-                    "[DevTerminal] Python 由内置 Pyodide（WebAssembly）执行，随 APK 打包。",
+                    "[DevTerminal] Python 由原生 CPython 3.13.9（arm64）执行，随 APK 打包。",
                     "[DevTerminal] 说明：JVM 无法运行于 WASM 沙箱，Java 暂仅支持编辑与语法高亮。"
                 )
             ) }

@@ -14,12 +14,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,6 +37,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import com.devterminal.ui.components.MonoText
 import com.devterminal.ui.components.QuietHint
 import com.devterminal.ui.components.QuietIconButton
@@ -98,10 +109,30 @@ fun OutputPanel(
     val cs = MaterialTheme.colorScheme
     val listState = rememberLazyListState()
     val inputFocus = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
 
-    // 有新输出时自动滚到底部
+    // 自动跟随锁：默认贴底；一旦用户在「不在底部」时主动滚动，就解除自动跟随，
+    // 否则每来一行 animateScrollToItem 都会把用户正在看的历史输出一把拽回底部。
+    var autoFollow by rememberSaveable { mutableStateOf(true) }
+    // 是否已滚到最后一条：用可视窗口末项判断，避免用 totalCount 抖动
+    val atBottom by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()
+            last != null && last.index >= info.totalItemsCount - 1
+        }
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
+            // 用户主动上翻离开底部 → 暂停自动跟随，把滚动权交还给用户
+            if (scrolling && !atBottom) autoFollow = false
+        }
+    }
+    // 有新输出且仍处于跟随态时，瞬时贴到最后一行（不再用动画，避免持续拖拽感）
     LaunchedEffect(output.size) {
-        if (output.isNotEmpty()) runCatching { listState.animateScrollToItem(output.size - 1) }
+        if (autoFollow && output.isNotEmpty()) {
+            runCatching { listState.scrollToItem(output.size - 1) }
+        }
     }
     // 运行开始后自动聚焦输入框，方便直接交互
     LaunchedEffect(inputVisible) {
@@ -176,6 +207,24 @@ fun OutputPanel(
                         } else {
                             MonoText(line, color = color, fontSize = 11)
                         }
+                    }
+                }
+                // 离开底部时才出现的「↓」回到底部按钮：克制、不常驻，indigo 强调
+                if (!atBottom) {
+                    IconButton(
+                        onClick = {
+                            autoFollow = true
+                            scope.launch { runCatching { listState.scrollToItem(output.size - 1) } }
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 8.dp, bottom = 4.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.KeyboardArrowDown,
+                            contentDescription = "回到底部",
+                            tint = cs.primary
+                        )
                     }
                 }
             }

@@ -66,6 +66,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.mapSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -109,6 +112,56 @@ import kotlin.math.roundToInt
  *  - **抽屉底部从三行文字按钮改为九宫格图标入口**，扫描效率更高也更整齐。
  *  - 全站不再出现实心色块徽标，状态一律用「色点 + 细字」表达。
  */
+/**
+ * Overlay 的 Saver：密封类没有默认可保存器，这里按「名称 → 实例」映射落盘，
+ * FileAction 单独携带 path。横竖屏切换 / 进程重建后，打开的面板不会凭空消失。
+ */
+private val overlaySaver = run {
+    data class Named(val key: String, val overlay: Overlay)
+    val objects = listOf(
+        Named("none", Overlay.None),
+        Named("palette", Overlay.Palette),
+        Named("newProject", Overlay.NewProject),
+        Named("git", Overlay.Git),
+        Named("ai", Overlay.Ai),
+        Named("globalSearch", Overlay.GlobalSearch),
+        Named("diagnostics", Overlay.Diagnostics),
+        Named("runConfig", Overlay.RunConfig),
+        Named("settings", Overlay.Settings),
+        Named("about", Overlay.About),
+        Named("onboarding", Overlay.Onboarding),
+    )
+    mapSaver(
+        save = { o ->
+            when (o) {
+                is Overlay.FileAction -> mapOf("kind" to "fileAction", "path" to o.path)
+                else -> mapOf("kind" to (objects.firstOrNull { it.overlay == o }?.key ?: "none"))
+            }
+        },
+        restore = { m ->
+            if (m["kind"] == "fileAction") {
+                Overlay.FileAction(m["path"] as? String ?: "")
+            } else {
+                objects.firstOrNull { it.key == m["kind"] }?.overlay ?: Overlay.None
+            }
+        }
+    )
+}
+
+/** ScrollToLineRequest 的 Saver：落盘 [line, seq]，恢复后再跳一次目标行 */
+private val scrollToLineSaver = run {
+    listSaver<ScrollToLineRequest?, Any>(
+        save = { req -> req?.let { listOf<Any>(it.line, it.seq) } ?: emptyList<Any>() },
+        restore = { parts ->
+            if (parts.isEmpty()) null
+            else ScrollToLineRequest(
+                (parts[0] as Number).toInt(),
+                (parts[1] as Number).toLong()
+            )
+        }
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorScreen(vm: EditorViewModel) {
@@ -121,7 +174,10 @@ fun EditorScreen(vm: EditorViewModel) {
 
     // 同一时刻至多一个面板。原先这里是 9 个独立布尔值，
     // 既可以同时为 true（弹窗叠弹窗），也容易漏掉打开时的副作用。
-    var overlay by remember { mutableStateOf<Overlay>(Overlay.None) }
+    // rememberSaveable：横竖屏切换后保持当前打开的面板（自定义 Saver 落盘）。
+    var overlay by rememberSaveable(stateSaver = overlaySaver) {
+        mutableStateOf<Overlay>(Overlay.None)
+    }
     fun closeOverlay() { overlay = Overlay.None }
 
     // 预览防抖：分屏打开期间，编辑文本停止变化 350ms 后才真正重渲染，
@@ -133,11 +189,13 @@ fun EditorScreen(vm: EditorViewModel) {
             .collectLatest { delay(350); vm.renderPreview() }
     }
 
-    /** 跳转到报错行的请求（seq 自增保证连续点同一行也能响应） */
-    var scrollToLine by remember { mutableStateOf<ScrollToLineRequest?>(null) }
+    /** 跳转到报错行的请求（seq 自增保证连续点同一行也能响应）；rememberSaveable 跨屏保留 */
+    var scrollToLine by rememberSaveable(stateSaver = scrollToLineSaver) {
+        mutableStateOf<ScrollToLineRequest?>(null)
+    }
 
-    /** 全局搜索关键词 */
-    var gsearchQuery by remember { mutableStateOf("") }
+    /** 全局搜索关键词；rememberSaveable 让横竖屏切换不丢已输入的查询词 */
+    var gsearchQuery by rememberSaveable { mutableStateOf("") }
 
     // SAF：导入任意文件到项目
     val importLauncher = rememberLauncherForActivityResult(

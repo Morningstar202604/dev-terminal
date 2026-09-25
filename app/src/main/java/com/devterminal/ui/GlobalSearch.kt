@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -98,12 +99,14 @@ fun GlobalSearchDialog(
                     "没有匹配结果",
                     modifier = Modifier.align(Alignment.Center)
                 )
-                else -> Column(Modifier.fillMaxWidth()) {
+                else -> Column(Modifier.fillMaxWidth().fillMaxHeight()) {
                     SectionLabel(
                         if (results.size >= 200) "200+ 处匹配" else "${results.size} 处匹配",
                         modifier = Modifier.padding(bottom = Dimens.xs)
                     )
-                    LazyColumn(Modifier.fillMaxWidth()) {
+                    // weight(1f)：结果列表吃掉「匹配数」标签之外的剩余高度，
+                    // 原先 Column 无界高、LazyColumn 只 fillMaxWidth，长结果被裁。
+                    LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                         items(results, key = { "${it.filePath}:${it.line}" }) { hit ->
                             Column(
                                 modifier = Modifier

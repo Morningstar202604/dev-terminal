@@ -1,7 +1,6 @@
 package com.devterminal.engine
 
 import android.content.Context
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -22,11 +21,11 @@ import java.util.concurrent.atomic.AtomicReference
  * 特性（对比 Pyodide/WASM）：
  * - 原生 ARM64 性能（不再有 1/10~1/50 的 WASM 降速）
  * - 真实文件系统：脚本直接读写 App 私有目录，cwd = 项目目录
- * - stdin/stdout 在 Python 层桥接：input()/print() 天然可用，无死锁
+ * - stdin/stdout 在 Python 层桥接：input()/print() 天然可用
  * - 中断走 CPython 官方 Py_AddPendingCall：死循环可被 KeyboardInterrupt 终止
  *
  * 标准库存放在 files/python-stdlib（首次运行时从 assets 解压），
- * libpython3.13.so 与 libpybridge.so 在 jniLibs/arm64-v8a。
+ * libpython3.13.so、libpybridge.so 及全部 C 扩展在 jniLibs/arm64-v8a。
  */
 class NativeEngine(private val context: Context) : RunEngine {
 
@@ -38,6 +37,7 @@ class NativeEngine(private val context: Context) : RunEngine {
 
     /** 解释器初始化是否完成（首次 run 前惰性初始化，耗时约 0.5~2s） */
     private val initLock = Any()
+    @Volatile
     private var initialized = false
 
     @Volatile
@@ -51,12 +51,24 @@ class NativeEngine(private val context: Context) : RunEngine {
 
     // ==================== 初始化 ====================
 
+    private val stdlibMarker = ".unpacked_ok"
+
+    /** P1-1：解压完整性校验——标记文件 + 关键 stdlib 文件都在才算可用 */
+    private fun stdlibOk(dest: File): Boolean {
+        if (!File(dest, stdlibMarker).exists()) return false
+        if (!File(dest, "lib/python3.13/os.py").exists()) return false
+        if (!File(dest, "lib/python3.13/encodings/__init__.py").exists()) return false
+        return true
+    }
+
     private fun ensureStdlib(): File {
-        // 标准库存放在 files/python-stdlib；不存在时从 assets/python-stdlib.zip 解压
+        // 标准库存放在 files/python-stdlib；不存在或校验失败时从 assets/python-stdlib.zip 解压
         val dest = File(context.filesDir, "python-stdlib")
-        if (dest.isDirectory && dest.list()?.isNotEmpty() == true) return dest
+        if (stdlibOk(dest)) return dest
         synchronized(initLock) {
-            if (dest.isDirectory && dest.list()?.isNotEmpty() == true) return dest
+            if (stdlibOk(dest)) return dest
+            // 半残目录先清空重建（失败可自愈）
+            dest.deleteRecursively()
             dest.mkdirs()
             val zip = File(context.filesDir, "python-stdlib.zip")
             if (!zip.exists()) {
@@ -64,7 +76,8 @@ class NativeEngine(private val context: Context) : RunEngine {
                     zip.outputStream().use { output -> input.copyTo(output) }
                 }
             }
-            runCatching {
+            // P1-1：解压失败不删 zip、不返回半残目录，向上抛异常
+            try {
                 java.util.zip.ZipFile(zip).use { zf ->
                     zf.entries().asSequence().forEach { e ->
                         val target = File(dest, e.name)
@@ -75,10 +88,18 @@ class NativeEngine(private val context: Context) : RunEngine {
                         }
                     }
                 }
-            }.onFailure { e ->
+            } catch (e: Exception) {
                 android.util.Log.e("NativeEngine", "stdlib 解压失败", e)
+                throw RuntimeException("Python 标准库解压失败：${e.message}", e)
             }
+            if (!stdlibOk(dest)) {
+                throw RuntimeException("Python 标准库解压后校验失败")
+            }
+            File(dest, stdlibMarker).createNewFile()
+            // 解压成功后删除临时 zip 节省空间
             zip.delete()
+            // P2-4：确保 site-packages 目录存在
+            File(dest, "lib/python3.13/site-packages").mkdirs()
         }
         return dest
     }
@@ -88,10 +109,13 @@ class NativeEngine(private val context: Context) : RunEngine {
         synchronized(initLock) {
             if (initialized) return true
             val stdlib = ensureStdlib()
+            // P0-1：传入 nativeLibraryDir（C 扩展 .so 所在）与 crash-native.log 路径
+            val nativeLibDir = context.applicationInfo.nativeLibraryDir
+            val crashLog = File(context.filesDir, "crash-native.log").absolutePath
             val ok = runCatching {
                 NativeEngine.bind(this)
                 bridge.attach(bridge)
-                bridge.initialize(stdlib.absolutePath)
+                bridge.initialize(stdlib.absolutePath, nativeLibDir, crashLog)
             }.getOrDefault(false)
             initialized = ok
             readyFlag.set(ok)
@@ -137,6 +161,12 @@ class NativeEngine(private val context: Context) : RunEngine {
         startedAt = started
         running = true
         bridge.clearPendingInput()
+        bridge.resetBuffers()
+
+        // P1-2：工作目录与脚本目录
+        val workingDir = if (request.workingDir.isNotBlank()) request.workingDir
+                         else script.parentFile?.absolutePath ?: "/"
+        val scriptDir = script.parentFile?.absolutePath ?: ""
 
         // 事件出口（C 回调线程 → Flow）
         sink.set { ev ->
@@ -151,7 +181,9 @@ class NativeEngine(private val context: Context) : RunEngine {
 
         val job = launch(Dispatchers.IO) {
             // 跑在专用线程，Py_Initialize 已在 initialize() 完成（持 GIL 语义由 C 层管理）
-            val err = bridge.execFile(script.absolutePath)
+            val err = bridge.execFile(script.absolutePath, workingDir, scriptDir)
+            // P2-1：无尾换行的最后一行残留在此 flush
+            bridge.flushBuffers()
             if (err != null) {
                 sink.get()?.invoke(RunEvent.Stderr(err))
                 sink.get()?.invoke(RunEvent.Finished(1, System.currentTimeMillis() - started))
@@ -164,9 +196,18 @@ class NativeEngine(private val context: Context) : RunEngine {
         val watchdog = launch(Dispatchers.IO) {
             kotlinx.coroutines.delay(timeoutMs + 5_000L)
             if (running) {
-                // 极端情况下强制收尾（正常 KeyboardInterrupt 已在 C 层完成）
-                sink.get()?.invoke(RunEvent.Stderr("运行超时，已强制终止。"))
+                // P0-2：先 pushEof 打断可能阻塞在 input() 的脚本，再 requestInterrupt
+                sink.get()?.invoke(RunEvent.Stderr("运行超时，正在发送中断..."))
+                bridge.pushEof()
                 bridge.requestInterrupt()
+                // P3-5：给中断 2 秒生效；仍未退出则警告并标记异常结束（不杀原生线程）
+                kotlinx.coroutines.delay(2_000L)
+                if (running) {
+                    android.util.Log.w("NativeEngine", "脚本未响应中断，超时强制收尾")
+                    sink.get()?.invoke(RunEvent.Stderr("警告：脚本未响应中断，可能仍在后台运行。"))
+                    running = false
+                    sink.get()?.invoke(RunEvent.Finished(130, System.currentTimeMillis() - started))
+                }
             }
         }
 
@@ -181,11 +222,11 @@ class NativeEngine(private val context: Context) : RunEngine {
 
     override fun stop() {
         running = false
-        // 1) Py_AddPendingCall：死循环在下一个字节码检查点抛 KeyboardInterrupt；
-        // 2) pushEof：若程序正阻塞在 input()（JNI 调用上，pending call 打不断），
-        //    EOF 会让桥返回 EOFError，input() 立即退出——两条路都能让运行停下来。
-        runCatching { bridge.requestInterrupt() }
+        // P0-2：必须先 pushEof——若脚本正阻塞在 input()（JNI 调用上，GIL 被攥死），
+        // EOFError 让 input() 立即返回；之后再 requestInterrupt 处理纯 CPU 死循环。
+        // 顺序反了会在 requestInterrupt 拿 GIL 时永久死锁，pushEof 永远执行不到。
         bridge.pushEof()
+        runCatching { bridge.requestInterrupt() }
     }
 
     override fun writeStdin(line: String): Boolean {
@@ -204,6 +245,8 @@ class NativeEngine(private val context: Context) : RunEngine {
             initialized = false
             readyFlag.set(false)
         }
+        // P3-3：复位静态 sink，避免重建引擎时 C 回调串到旧实例
+        NativeEngine.unbind()
     }
 
     // ==================== C 回调入口 ====================
@@ -219,6 +262,12 @@ class NativeEngine(private val context: Context) : RunEngine {
         fun bind(engine: NativeEngine) {
             stateSink.set { s, m -> engine.onState(s, m) }
             lineSink.set { s, t -> engine.onLine(s, t) }
+        }
+
+        /** P3-3：解绑，释放静态引用 */
+        fun unbind() {
+            stateSink.set(null)
+            lineSink.set(null)
         }
 
         fun emitLine(stream: String, text: String) {

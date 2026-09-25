@@ -4,19 +4,24 @@ import android.content.Context
 import java.io.File
 
 /**
- * 运行环境的目录管理（Pyodide / WebAssembly 版）。
+ * 运行环境的目录管理（原生 CPython 3.13.9 / arm64-v8a 版）。
  *
  * ## 与旧版的区别
  * 旧版负责把 441MB 的 `assets/usrtar.zip` 解压到 `files/usr`，并模拟 Termux 环境变量
  * 供原生二进制使用。该方案已废弃——工具链不入库、必须联网下载，与「离线」定位矛盾。
+ * 再早一版用 Pyodide（WASM），性能差且 import C 扩展受限，也已被原生 CPython 取代。
  *
- * 现在 Python 由随 APK 打包的 Pyodide（WASM）执行，不再需要解压任何东西，
- * 本类因此精简为纯粹的目录管理。
+ * 现在 Python 由随 APK 打包的原生 CPython 执行：
+ * - libpython3.13.so、libpybridge.so 及全部 C 扩展在 jniLibs/arm64-v8a；
+ * - 纯 .py 标准库在 assets/python-stdlib.zip，首启解压到 files/python-stdlib
+ *   （由 NativeEngine.ensureStdlib 负责，含完整性校验与 site-packages 创建）。
+ * 本类只负责用户工作目录布局。
  *
  * ## 目录布局
  * ```
- * files/projects/   ← 用户项目（ProjectManager 使用）
- * files/home/       ← 用户 HOME（导出/临时文件）
+ * files/projects/        ← 用户项目（ProjectManager 使用）
+ * files/home/            ← 用户 HOME（导出/临时文件）
+ * files/python-stdlib/   ← 解压的纯 Python 标准库（NativeEngine 管理）
  * ```
  */
 class EnvironmentInstaller(private val context: Context) {
@@ -27,7 +32,8 @@ class EnvironmentInstaller(private val context: Context) {
 
     /**
      * 确保工作目录存在。
-     * Pyodide 运行时随 APK 打包，无需解压，因此这里只建目录。
+     * 原生 CPython 运行时随 APK 打包（.so 在 jniLibs，标准库 zip 首启解压），
+     * 这里只建用户目录。
      */
     fun ensureDirs() {
         homeDir.mkdirs()

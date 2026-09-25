@@ -110,6 +110,14 @@ fun CodeEditorView(
         onDispose { runCatching { editor.release() } }
     }
 
+    // 软键盘弹出后编辑器获得焦点：把光标选区主动滚回可视区，
+    // 避免光标被顶起的 IME 或自身滚动条压在屏幕外。
+    LaunchedEffect(Unit) {
+        editor.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) editor.post { runCatching { editor.ensureSelectionVisible() } }
+        }
+    }
+
     // 语法/主题注册表全局只需初始化一次；读 assets 是 IO，放到后台线程
     var textMateReady by remember { mutableStateOf(textMateInitialized) }
     LaunchedEffect(Unit) {
@@ -197,7 +205,12 @@ fun CodeEditorView(
     }
 
     AndroidView(
-        modifier = modifier.pointerInput(Unit) {
+        // P1-7【待真机验证】：SoraEditor(AndroidView) 与 Compose 嵌套滚动协作。
+        // rememberNestedScrollInteropConnection() 在当前 Compose BOM 2024.12 下
+        // 未解析，暂不挂 nestedScroll 桥。编辑器自身滚动由 SoraEditor View 体系处理，
+        // 待真机验证捏合/单指滚动竞争后再决定是否补嵌套滚动桥接。
+        modifier = modifier
+            .pointerInput(Unit) {
             // 双指捏合调整字号：累积增量达到阈值才回调，避免字号抖动。
             // 用 rememberUpdatedState + 固定 key，手势不会因重组被重启。
             var pending = 0f
@@ -222,6 +235,12 @@ fun CodeEditorView(
                     getComponent(EditorAutoCompletion::class.java).isEnabled = true
                 }
 
+                // 内容变更回写。这里每次按键确实要 editor.text.toString()（O(n)），
+                // 但**不能**对 onTextChange 做节流：update{} 块用
+                // `view.text.toString() != text` 判断是否外部改了文档，若 VM 文本
+                // 滞后，光标事件触发的重组会把用户刚敲的字 setText 覆盖掉。
+                // 折中：docRef 与 onTextChange 共用同一次 toString（已合并为一次拷贝），
+                // 增量回写需 SoraEditor 提供稳定的 diff 区间，暂不冒险改动。
                 subscribeEvent(ContentChangeEvent::class.java) { _, _ ->
                     val current = editor.text.toString()
                     docRef.set(current)

@@ -1,6 +1,8 @@
 package com.devterminal.engine
 
 import android.content.Context
+import android.os.Build
+import java.io.File
 
 /** 单个运行能力的探测结果 */
 data class ToolStatus(
@@ -28,58 +30,85 @@ data class EnvReport(
 }
 
 /**
- * 离线环境自检（Pyodide / WebAssembly 版）。
+ * 离线环境自检（原生 CPython 3.13.9 / arm64-v8a 版）。
  *
- * 动机：用户拿到 APK 后，最可能的失败是「运行时资源没打进包」或「被压缩导致加载失败」。
- * 与其让他看到一个笼统的报错，不如主动检查 APK 内 assets 并给出**可执行**的提示。
+ * 动机：用户拿到 APK 后，最可能的失败是「运行时资源没打进包」或「.so 加载失败」。
+ * 与其让他看到一个笼统的报错，不如主动检查 APK 内资源并给出**可执行**的提示。
  *
- * 与旧版的区别：旧版探测的是原生工具链目录（`files/usr/bin` 下的二进制），
- * 那是已废弃的 441MB 外置包方案；本版检查的是随 APK 打包的 Pyodide 运行时。
+ * 探测项（对齐原生引擎）：
+ * - assets/python-stdlib.zip（纯 Python 标准库）
+ * - nativeLibraryDir 下的 libpython3.13.so / libpybridge.so（解释器与 JNI 桥）
+ * - nativeLibraryDir 下的 C 扩展（math._random 等）与依赖库（libcrypto_python.so）
+ * - CPU 架构是否为 arm64-v8a
  */
 object EnvDiagnostics {
 
-    /** Pyodide 运行时必需的文件（缺任何一个都无法启动解释器） */
-    private val REQUIRED_ASSETS = listOf(
-        "pyodide/pyodide.mjs" to "加载器",
-        "pyodide/pyodide.asm.wasm" to "解释器本体",
-        "pyodide/python_stdlib.zip" to "Python 标准库",
-        "python-runner.html" to "运行器页面"
-    )
-
     /**
-     * 执行诊断。检查 APK 内资源是否完整，务必在 IO 线程调用。
-     *
-     * @param context 用于读取 assets
+     * 执行诊断。务必在 IO 线程调用。
      */
     fun run(context: Context): EnvReport {
         val tools = mutableListOf<ToolStatus>()
         var totalSize = 0L
 
-        // 1) 逐个检查必需资源是否存在，并累计体积
-        for ((path, label) in REQUIRED_ASSETS) {
-            val size = assetSize(context, path)
-            if (size > 0) {
-                totalSize += size
-                tools += ToolStatus(label, true, "${formatSize(size)} · $path")
-            } else {
-                tools += ToolStatus(label, false, "缺失：assets/$path")
-            }
+        // 1) CPU 架构
+        val abis = Build.SUPPORTED_ABIS?.toList().orEmpty()
+        val arm64 = abis.any { it.equals("arm64-v8a", ignoreCase = true) }
+        tools += if (arm64) {
+            ToolStatus("CPU 架构", true, "arm64-v8a · 原生 ABI")
+        } else {
+            ToolStatus("CPU 架构", false, "不支持：当前设备 ${abis.joinToString()}，仅支持 arm64-v8a")
         }
 
-        // 2) 能力说明（诚实标注：Python/Git 可用，Java 在 WASM 下不可用）
-        tools += ToolStatus("Python 执行", true, "Pyodide（WebAssembly）· 完全离线")
-        tools += ToolStatus(
-            "数据科学库", true,
-            "numpy / pandas 内置 wheel · 按代码 import 自动装载（零网络）"
-        )
+        // 2) 标准库 zip
+        val zipSize = assetSize(context, "python-stdlib.zip")
+        if (zipSize > 0) {
+            totalSize += zipSize
+            tools += ToolStatus("Python 标准库", true, "${formatSize(zipSize)} · assets/python-stdlib.zip")
+        } else {
+            tools += ToolStatus("Python 标准库", false, "缺失：assets/python-stdlib.zip")
+        }
+
+        // 3) nativeLibraryDir 下的关键 .so
+        val libDir = context.applicationInfo.nativeLibraryDir
+        totalSize += nativeLib(context, tools, libDir, "libpython3.13.so", "解释器本体")
+        totalSize += nativeLib(context, tools, libDir, "libpybridge.so", "JNI 桥")
+
+        // 4) C 扩展与依赖库（P0-1：确认 math/_random/_socket/_ctypes 等已打包）
+        val mathSo = File(libDir).listFiles()?.firstOrNull {
+            it.name.startsWith("math.") && it.name.endsWith(".so")
+        }
+        tools += if (mathSo != null && mathSo.length() > 0) {
+            totalSize += mathSo.length()
+            ToolStatus("C 扩展模块", true, "${formatSize(mathSo.length())} · math/_random/_socket/_ctypes 等")
+        } else {
+            ToolStatus("C 扩展模块", false, "缺失：math.*.so（lib-dynload 未打包）")
+        }
+        totalSize += nativeLib(context, tools, libDir, "libcrypto_python.so", "OpenSSL 依赖(_ssl/_hashlib)")
+
+        // 5) 能力说明
+        tools += ToolStatus("Python 执行", arm64 && zipSize > 0, "原生 CPython 3.13.9 · 完全离线")
         tools += ToolStatus("Git 操作", true, "JGit（纯 Java）· 完全离线")
         tools += ToolStatus(
             "Java 执行", false,
-            "不可用：JVM 无法运行于 WebAssembly 沙箱（仅保留编辑与高亮）"
+            "不可用：本版聚焦 Python（仅保留编辑与高亮）"
         )
 
-        val ready = REQUIRED_ASSETS.all { assetSize(context, it.first) > 0 }
+        val ready = arm64 && zipSize > 0 &&
+            File(libDir, "libpython3.13.so").exists() &&
+            File(libDir, "libpybridge.so").exists()
         return EnvReport(ready, totalSize, tools)
+    }
+
+    /** 检查 nativeLibraryDir 下某个 .so，返回其字节数（用于累计体积） */
+    private fun nativeLib(context: Context, tools: MutableList<ToolStatus>,
+                          libDir: String, name: String, label: String): Long {
+        val f = File(libDir, name)
+        if (f.exists() && f.length() > 0) {
+            tools += ToolStatus(label, true, "${formatSize(f.length())} · $name")
+            return f.length()
+        }
+        tools += ToolStatus(label, false, "缺失：$libDir/$name")
+        return 0L
     }
 
     /** 读取 assets 中某文件的大小；不存在或读取失败返回 0 */
