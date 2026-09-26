@@ -1,12 +1,16 @@
 name: Release APK
 
-# 推送 v* tag 自动构建 APK 并上传到 Release。
+# 推送 v* tag 自动构建 APK 并上传到 Release；也可在 Actions 页面手动触发。
 #
-# 构建说明：Python 运行时（Pyodide / WebAssembly，约 13MB）已随仓库提供、
-# 由 AAPT 打进 APK，因此**无需任何外部下载**，clone 后即可离线构建。
+# 构建说明：Python 运行时已随仓库提供（CPython 3.13 for Android），由 AAPT 打进 APK，
+# 因此**无需任何外部下载**，clone 后即可离线构建：
+#   - app/src/main/assets/python-stdlib.zip          纯 Python 标准库
+#   - app/src/main/jniLibs/arm64-v8a/libpython3.13.so 解释器本体
+#   - app/src/main/jniLibs/arm64-v8a/libpybridge.so   JNI 桥
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -29,14 +33,15 @@ jobs:
           java-version: "17"
 
       - name: Verify offline Python runtime is present
-        # 构建前先确认 Pyodide 资源在仓库中（否则打出的 APK 跑不了代码）
+        # 构建前先确认 CPython 运行时资源在仓库中（否则打出的 APK 跑不了代码）
         run: |
-          for f in pyodide.asm.wasm python_stdlib.zip pyodide.mjs; do
-            test -f "app/src/main/assets/pyodide/$f" \
-              || { echo "::error::缺少 Python 运行时资源 app/src/main/assets/pyodide/$f"; exit 1; }
+          test -f app/src/main/assets/python-stdlib.zip \
+            || { echo "::error::缺少 Python 标准库 app/src/main/assets/python-stdlib.zip"; exit 1; }
+          for f in libpython3.13.so libpybridge.so; do
+            test -f "app/src/main/jniLibs/arm64-v8a/$f" \
+              || { echo "::error::缺少 Python 运行库 app/src/main/jniLibs/arm64-v8a/$f"; exit 1; }
           done
-          test -f app/src/main/assets/python-runner.html
-          echo "✅ 离线运行时资源齐备"
+          echo "✅ 离线运行时资源齐备（CPython 3.13 + 标准库 + JNI 桥）"
 
       - name: Build debug APK
         run: |
@@ -51,6 +56,7 @@ jobs:
           ls -lh dist/
 
       - name: Upload APK to GitHub Release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -60,3 +66,10 @@ jobs:
             --latest || true
           gh release upload "$GITHUB_REF_NAME" dist/*.apk --clobber
           echo "APK uploaded to release $GITHUB_REF_NAME"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dev-terminal-apk
+          path: dist/*.apk
+          retention-days: 30
