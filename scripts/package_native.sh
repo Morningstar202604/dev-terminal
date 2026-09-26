@@ -1,12 +1,33 @@
 #!/bin/bash
 # 打包原生 CPython 运行产物到 dev-terminal APK 结构
-# 用法：bash package_native.sh <cpython-cross-dir>
+# 用法：bash scripts/package_native.sh <cpython-cross-dir>
+#
+# 依赖环境变量（都可选）：
+#   CPYTHON_CROSS_DIR  CPython 交叉编译产物目录（等价于第一个参数）
+#   ANDROID_NDK_HOME   指定 NDK；未设置时自动探测 $ANDROID_HOME/ndk 下最新版本
+#   APP_DIR            目标 app 模块目录，默认 <仓库根>/app
 set -euo pipefail
 
-SRC="${1:-/home/user/tools/ndk-dl/cpython-3.13.9/cross-build/aarch64-linux-android}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+SRC="${1:-${CPYTHON_CROSS_DIR:-}}"
+if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
+  echo "用法: bash scripts/package_native.sh <cpython-cross-dir>（或设置 CPYTHON_CROSS_DIR）" >&2
+  echo "示例: bash scripts/package_native.sh ~/tools/cpython-3.13.9/cross-build/aarch64-linux-android" >&2
+  exit 2
+fi
 PREFIX="$SRC/prefix"
-APP=/home/user/Doubao/chats/38444027447280130/dev-terminal/app
-NDK=/home/user/tools/android-sdk-34/ndk/27.3.13750724
+APP="${APP_DIR:-$ROOT/app}"
+
+NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"
+if [ -z "$NDK" ]; then
+  SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
+  NDK="$(ls -d "$SDK"/ndk/* 2>/dev/null | sort -V | tail -1 || true)"
+fi
+if [ -z "$NDK" ] || [ ! -d "$NDK" ]; then
+  echo "未找到 Android NDK，请设置 ANDROID_NDK_HOME" >&2
+  exit 2
+fi
 TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
 JDIR="$APP/src/main/jniLibs/arm64-v8a"
 
